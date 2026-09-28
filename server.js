@@ -26,7 +26,8 @@ const TTL = {
   session: 12 * 60e3,   // 12 min
   embed: 15 * 60e3      // 15 min
 };
-const MAX_REQ_PER_MIN = 18; // safe rate limit for upstream witanime
+const MAX_REQ_PER_MIN = Number(process.env.UPSTREAM_RPM) || 18; // safe rate limit for upstream witanime
+const MAX_QUEUE_WAIT = Number(process.env.UPSTREAM_MAX_WAIT_MS) || 5000; // never stall a request past this (serverless timeouts)
 
 /* ---------------- In-memory API cache ---------------- */
 const store = new Map();
@@ -56,7 +57,7 @@ function waitForSlot() {
     hits.push(now);
     return Promise.resolve();
   }
-  const wait = 60e3 - (now - hits[0]) + 60;
+  const wait = Math.min(60e3 - (now - hits[0]) + 60, MAX_QUEUE_WAIT);
   return new Promise((r) => setTimeout(r, wait)).then(() => {
     hits.push(Date.now());
   });
