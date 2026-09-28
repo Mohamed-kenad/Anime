@@ -15,8 +15,6 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 }[c]));
 
-const fmt = (n) => Number(n || 0).toLocaleString('en-US');
-
 // CDN blocks direct browser requests (403 via referer hotlink protection),
 // so all remote images must be served through the backend proxy.
 const imgProxy = (url) =>
@@ -196,19 +194,11 @@ function go(url, { replace = false } = {}) {
 async function handleRoute() {
   const r = parseRoute();
   stopHeroSlider();
-  document.title = 'AnimeWit — Watch Anime Online in HD';
+  document.title = 'AnimeWit';
 
   // Highlight desktop nav
-  $$('.nav-link').forEach((a) => {
-    const nav = a.dataset.nav;
-    if (r.view === 'home' && (!r.hash || r.hash === '#home')) {
-      a.classList.toggle('active', nav === 'home');
-    } else if (r.hash) {
-      a.classList.toggle('active', nav === r.hash.replace('#', ''));
-    } else {
-      a.classList.remove('active');
-    }
-  });
+  if (r.view === 'home') setActiveNav(r.hash ? r.hash.replace('#', '') : 'home');
+  else $$('.nav-link').forEach((a) => a.classList.remove('active'));
 
   try {
     if (r.view === 'watch') {
@@ -234,6 +224,11 @@ async function handleRoute() {
   }
 }
 
+/* Single source of truth for the navbar active underline */
+function setActiveNav(key) {
+  $$('.nav-link').forEach((a) => a.classList.toggle('active', a.dataset.nav === key));
+}
+
 function scrollToSection(key) {
   if (key === 'bookmarks') {
     openBookmarksView();
@@ -252,36 +247,31 @@ function scrollToSection(key) {
    4. Cards & Grid Rendering
    ========================================================================= */
 function cardHtml(item) {
-  const img = item.poster || item.banner || POSTER_PLACEHOLDER;
+  const img = imgProxy(item.poster || item.banner || POSTER_PLACEHOLDER);
   const isEp = item.kind === 'watch';
   const href = isEp ? `/watch/${item.slug}/${item.ep}` : `/${item.kind || 'anime'}/${item.slug}`;
   const badgeText = isEp ? (item.label || `Ep ${item.ep}`) : (item.type || (item.kind === 'movie' ? 'Movie' : 'TV'));
   const badgeClass = isEp ? 'badge-episode' : (String(item.type || '').toLowerCase().includes('movie') || item.kind === 'movie' ? 'badge-movie' : 'badge-tv');
-  const ratingHtml = item.rating ? `<span class="card-badge-top-right">★ ${esc(item.rating)}</span>` : '';
   const isSaved = Storage.isBookmarked(item.slug);
 
   return `
     <article class="anime-card" data-slug="${esc(item.slug)}" data-kind="${esc(item.kind)}" ${item.ep ? `data-ep="${item.ep}"` : ''}>
-      <a class="card-poster" href="${href}">
+      <a class="card-poster" href="${href}" title="${esc(item.title)}">
         <img src="${esc(img)}" alt="${esc(item.title)}" loading="lazy" decoding="async" referrerpolicy="no-referrer">
-        <span class="card-badge-top-left ${badgeClass}">${esc(badgeText)}</span>
-        ${ratingHtml}
+        <span class="card-badge ${badgeClass}">${esc(badgeText)}</span>
         <div class="card-play-overlay">
           <div class="play-btn-circle">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
           </div>
         </div>
+        <div class="card-overlay">
+          <span class="card-title">${esc(item.title)}</span>
+          ${item.rating ? `<span class="card-rating">★ ${esc(item.rating)}</span>` : ''}
+        </div>
       </a>
-      <button class="card-bookmark-btn ${isSaved ? 'saved' : ''}" data-slug="${esc(item.slug)}" title="${isSaved ? 'Remove from bookmarks' : 'Add to bookmarks'}" type="button">
+      <button class="card-bookmark-btn ${isSaved ? 'saved' : ''}" data-slug="${esc(item.slug)}" title="${isSaved ? 'Remove from My List' : 'Add to My List'}" type="button" aria-label="Bookmark">
         <svg width="15" height="15" viewBox="0 0 24 24" fill="${isSaved ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
       </button>
-      <div class="card-info">
-        <a href="${href}" class="card-title" title="${esc(item.title)}">${esc(item.title)}</a>
-        <div class="card-meta-line">
-          <span>${esc(badgeText)}</span>
-          ${item.rating ? `<span>★ ${esc(item.rating)}</span>` : ''}
-        </div>
-      </div>
     </article>
   `;
 }
@@ -289,15 +279,7 @@ function cardHtml(item) {
 function renderSkeletonGrid(count = 12) {
   let html = '';
   for (let i = 0; i < count; i++) {
-    html += `
-      <div class="anime-card skeleton-card">
-        <div class="card-poster skeleton"></div>
-        <div class="card-info" style="gap:8px">
-          <div class="skeleton" style="height:14px;width:80%"></div>
-          <div class="skeleton" style="height:12px;width:40%"></div>
-        </div>
-      </div>
-    `;
+    html += `<div class="anime-card skeleton-card"><div class="card-poster skeleton"></div></div>`;
   }
   return html;
 }
@@ -316,7 +298,7 @@ async function ensureHome() {
     container.innerHTML = `
       <section class="section">
         <div class="section-header"><div class="skeleton" style="height:28px;width:200px"></div></div>
-        <div class="grid">${renderSkeletonGrid(8)}</div>
+        <div class="rail-track">${renderSkeletonGrid(8)}</div>
       </section>
     `;
   }
@@ -328,39 +310,85 @@ async function ensureHome() {
   return data;
 }
 
+/* Horizontal rail: edge arrows + disabled state */
+function initRail(wrap) {
+  const track = wrap.querySelector('.rail-track');
+  if (!track) return;
+  const prev = wrap.querySelector('.rail-nav.prev');
+  const next = wrap.querySelector('.rail-nav.next');
+
+  const sync = () => {
+    const max = track.scrollWidth - track.clientWidth - 2;
+    if (prev) prev.disabled = track.scrollLeft <= 2;
+    if (next) next.disabled = track.scrollLeft >= max;
+  };
+
+  wrap.querySelectorAll('[data-rail-dir]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const step = Math.max(260, Math.round(track.clientWidth * 0.82));
+      track.scrollBy({ left: step * Number(btn.dataset.railDir), behavior: 'smooth' });
+    });
+  });
+
+  track.addEventListener('scroll', sync, { passive: true });
+  window.addEventListener('resize', sync);
+  sync();
+}
+
+const CHEVRON_RIGHT = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>';
+const CHEVRON_UP = '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>';
+
+function sectionRailHtml(sec) {
+  const key = esc(sec.key);
+  return `
+    <section class="section" id="sec-${key}">
+      <div class="section-header">
+        <div class="section-title-wrap">
+          <h2 class="section-title">${esc(sec.enTitle || sec.title)}</h2>
+        </div>
+        <a href="/#${key}" class="section-link" data-viewall="${key}">
+          <span class="section-link-label">View All</span>
+          <span class="section-link-icon">${CHEVRON_RIGHT}</span>
+        </a>
+      </div>
+      <div class="rail-wrap" data-rail>
+        <button class="rail-nav prev" type="button" data-rail-dir="-1" aria-label="Scroll left">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        </button>
+        <div class="rail-track">
+          ${sec.items.map(cardHtml).join('')}
+        </div>
+        <button class="rail-nav next" type="button" data-rail-dir="1" aria-label="Scroll right">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </button>
+      </div>
+    </section>
+  `;
+}
+
+/* Toggle a section between the scrollable rail and the full wrapped grid */
+function toggleSectionExpand(section) {
+  if (!section) return false;
+  const link = section.querySelector('[data-viewall]');
+  const icon = section.querySelector('.section-link-icon');
+  const label = section.querySelector('.section-link-label');
+  const track = section.querySelector('.rail-track');
+  const nowOpen = !section.classList.contains('expanded');
+
+  section.classList.toggle('expanded', nowOpen);
+  if (link) link.classList.toggle('is-open', nowOpen);
+  if (label) label.textContent = nowOpen ? 'Show Less' : 'View All';
+  if (icon) icon.innerHTML = nowOpen ? CHEVRON_UP : CHEVRON_RIGHT;
+  if (track) track.scrollLeft = 0;
+  return nowOpen;
+}
+
 function renderHomeSections(data) {
   const container = $('#homeSections');
   if (!container || !data.sections) return;
 
-  container.innerHTML = data.sections.map((sec) => {
-    return `
-      <section class="section" id="sec-${esc(sec.key)}">
-        <div class="section-header">
-          <div class="section-title-wrap">
-            <h2 class="section-title">${esc(sec.enTitle || sec.title)}</h2>
-            <span class="section-counter">${sec.items.length}</span>
-          </div>
-          <a href="/#${esc(sec.key)}" class="section-link" data-nav="${esc(sec.key)}">
-            <span>Explore all</span>
-            <span>→</span>
-          </a>
-        </div>
-        <div class="grid">
-          ${sec.items.map(cardHtml).join('')}
-        </div>
-      </section>
-    `;
-  }).join('');
-
-  // Update statistics bar
-  const allItems = data.sections.flatMap((s) => s.items);
-  const uniqueAnime = new Set(allItems.map((x) => x.slug));
-  const epCount = allItems.filter((x) => x.kind === 'watch').length;
-  const movieCount = new Set(allItems.filter((x) => x.kind === 'movie').map((x) => x.slug)).size;
-
-  if ($('#statAnime')) $('#statAnime').textContent = fmt(uniqueAnime.size);
-  if ($('#statEp')) $('#statEp').textContent = fmt(epCount || 300);
-  if ($('#statMovie')) $('#statMovie').textContent = fmt(movieCount || 45);
+  container.innerHTML = data.sections.map(sectionRailHtml).join('');
+  $$('[data-rail]').forEach(initRail);
 }
 
 /* Hero Carousel */
@@ -393,7 +421,7 @@ function renderHeroSlide(idx) {
   }
 
   if ($('#heroEyebrow')) $('#heroEyebrow').textContent = item.kind === 'watch' ? 'NEW EPISODE RELEASE' : 'FEATURED ANIME';
-  if ($('#heroTitle')) $('#heroTitle').textContent = item.title;
+  if ($('#heroTitle')) $('#heroTitle').innerHTML = twoToneTitle(item.title);
   if ($('#heroSubtitle')) $('#heroSubtitle').textContent = item.description || 'Watch now in high quality on AnimeWit.';
 
   // Meta parsing
@@ -434,11 +462,25 @@ function renderHeroSlide(idx) {
     };
   }
 
-  // Dots
-  const dotsBox = $('#heroDots');
-  if (dotsBox) {
-    dotsBox.innerHTML = list.map((_, i) => `<span class="hero-dot-btn ${i === idx ? 'active' : ''}" data-idx="${i}"></span>`).join('');
+  // Thumbnail rail
+  const thumbsBox = $('#heroThumbs');
+  if (thumbsBox) {
+    thumbsBox.innerHTML = list.map((it, i) => `
+      <button class="hero-thumb ${i === idx ? 'active' : ''}" type="button" data-idx="${i}" title="${esc(it.title)}" aria-label="Show ${esc(it.title)}">
+        <img src="${esc(imgProxy(it.banner || it.poster || POSTER_PLACEHOLDER))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">
+      </button>
+    `).join('');
   }
+}
+
+/* Split a title so the last word carries the accent colour */
+function twoToneTitle(title) {
+  const clean = String(title || '').trim();
+  if (!clean) return '';
+  const words = clean.split(/\s+/);
+  if (words.length < 2) return esc(clean);
+  const last = words.pop();
+  return esc(words.join(' ')) + ' <span class="accent-word">' + esc(last) + '</span>';
 }
 
 /* Continue Watching Row */
@@ -457,7 +499,7 @@ function renderContinueWatching() {
   grid.innerHTML = history.map((item) => `
     <div class="continue-card" data-slug="${esc(item.slug)}" data-ep="${item.ep}">
       <div class="continue-thumb-wrap">
-        <img class="continue-thumb" src="${esc(item.poster || POSTER_PLACEHOLDER)}" alt="" loading="lazy" referrerpolicy="no-referrer">
+        <img class="continue-thumb" src="${esc(imgProxy(item.poster || POSTER_PLACEHOLDER))}" alt="" loading="lazy" referrerpolicy="no-referrer">
         <div class="continue-progress-bar"><div class="continue-progress-fill"></div></div>
       </div>
       <button class="continue-remove" data-slug="${esc(item.slug)}" data-ep="${item.ep}" title="Remove">✕</button>
@@ -491,13 +533,22 @@ function openBookmarksView() {
    ========================================================================= */
 function setupSearch() {
   const input = $('#searchInput');
+  const box = $('#searchBox');
   const dd = $('#searchResults');
   const clearBtn = $('#searchClear');
   if (!input || !dd) return;
 
+  // The "/" hint and the "x" button share the same corner, so they must
+  // always be toggled together or they render on top of each other.
+  const syncSearchBox = () => {
+    const hasValue = input.value.trim().length > 0;
+    if (clearBtn) clearBtn.hidden = !hasValue;
+    if (box) box.classList.toggle('has-value', hasValue);
+  };
+
   input.addEventListener('input', () => {
     const q = input.value.trim();
-    if (clearBtn) clearBtn.hidden = !q;
+    syncSearchBox();
     clearTimeout(state.searchTimer);
     if (q.length < 2) {
       dd.classList.remove('active');
@@ -517,7 +568,7 @@ function setupSearch() {
         }
         dd.innerHTML = items.slice(0, 8).map((it) => `
           <button class="search-item" data-kind="${esc(it.kind)}" data-slug="${esc(it.slug)}" ${it.ep ? `data-ep="${it.ep}"` : ''} type="button">
-            <img class="search-thumb" src="${esc(it.poster || POSTER_PLACEHOLDER)}" alt="" loading="lazy" referrerpolicy="no-referrer">
+            <img class="search-thumb" src="${esc(imgProxy(it.poster || POSTER_PLACEHOLDER))}" alt="" loading="lazy" referrerpolicy="no-referrer">
             <div class="search-item-info">
               <div class="search-item-title">${esc(it.title)}</div>
               <div class="search-item-meta">
@@ -536,7 +587,7 @@ function setupSearch() {
   if (clearBtn) {
     clearBtn.addEventListener('click', () => {
       input.value = '';
-      clearBtn.hidden = true;
+      syncSearchBox();
       dd.classList.remove('active');
       input.focus();
     });
@@ -547,8 +598,9 @@ function setupSearch() {
     if (!item) return;
     const { kind, slug, ep } = item.dataset;
     input.value = '';
+    input.blur();
+    syncSearchBox();
     dd.classList.remove('active');
-    if (clearBtn) clearBtn.hidden = true;
     if (kind === 'watch' && ep) go(`/watch/${slug}/${ep}`);
     else go(`/${kind || 'anime'}/${slug}`);
   });
@@ -632,13 +684,13 @@ async function openDetail(slug, kind) {
 
   const poster = $('#animePagePoster');
   if (poster) {
-    poster.src = data.poster || POSTER_PLACEHOLDER;
+    poster.src = imgProxy(data.poster || POSTER_PLACEHOLDER);
     poster.alt = data.title;
   }
 
   const banner = $('#animePageBanner');
   if (banner && data.banner) {
-    banner.style.backgroundImage = `url('${data.banner}')`;
+    banner.style.backgroundImage = `url('${imgProxy(data.banner)}')`;
   }
 
   if ($('#animePageType')) $('#animePageType').textContent = data.kind === 'movie' ? 'Movie' : 'TV Series';
@@ -702,7 +754,7 @@ async function openDetail(slug, kind) {
   renderEpisodeExplorer(preview, eps, null, $('#animeRangeTabs'), $('#animeEpisodesMore'));
 }
 
-/* Episode Explorer with Range Chunks (e.g. 1-50, 51-100) */
+/* Episode Explorer with Range Chunks (e.g. 976-1025, 1026-1075) */
 function renderEpisodeExplorer(container, eps, currentEp, tabsContainer, moreBtn) {
   if (!eps || !eps.length) {
     container.innerHTML = '<p class="empty-state">No episodes listed yet.</p>';
@@ -711,48 +763,83 @@ function renderEpisodeExplorer(container, eps, currentEp, tabsContainer, moreBtn
     return;
   }
 
-  const CHUNK_SIZE = 50;
-  if (eps.length > CHUNK_SIZE && tabsContainer) {
-    tabsContainer.hidden = false;
-    const chunkCount = Math.ceil(eps.length / CHUNK_SIZE);
-    let activeChunk = 0;
-    if (currentEp) {
-      const idx = eps.findIndex((x) => x.n === currentEp);
-      if (idx >= 0) activeChunk = Math.floor(idx / CHUNK_SIZE);
-    }
+  const counter = container.closest('.episode-sidebar') ? $('#episodeCount') : null;
+  if (counter) counter.textContent = eps.length;
 
-    tabsContainer.innerHTML = Array.from({ length: chunkCount }, (_, i) => {
-      const start = i * CHUNK_SIZE + 1;
-      const end = Math.min((i + 1) * CHUNK_SIZE, eps.length);
-      return `<button class="range-tab ${i === activeChunk ? 'active' : ''}" data-chunk="${i}" type="button">${start} - ${end}</button>`;
-    }).join('');
+  // Restore the default (non-searched) view; used when the search box is cleared.
+  const renderDefault = () => {
+    const CHUNK_SIZE = 50;
+    if (eps.length > CHUNK_SIZE && tabsContainer) {
+      tabsContainer.hidden = false;
+      const chunkCount = Math.ceil(eps.length / CHUNK_SIZE);
+      let activeChunk = 0;
+      if (currentEp) {
+        const idx = eps.findIndex((x) => x.n === currentEp);
+        if (idx >= 0) activeChunk = Math.floor(idx / CHUNK_SIZE);
+      }
 
-    const renderChunk = (cIdx) => {
-      const slice = eps.slice(cIdx * CHUNK_SIZE, (cIdx + 1) * CHUNK_SIZE);
-      container.innerHTML = slice.map((ep) => episodeItemHtml(ep, currentEp)).join('');
-    };
+      // Label tabs with the real episode numbers, not array positions —
+      // long-running series may only expose a window (e.g. 976-1214).
+      tabsContainer.innerHTML = Array.from({ length: chunkCount }, (_, i) => {
+        const startEp = eps[i * CHUNK_SIZE].n;
+        const endEp = eps[Math.min((i + 1) * CHUNK_SIZE, eps.length) - 1].n;
+        return `<button class="range-tab ${i === activeChunk ? 'active' : ''}" data-chunk="${i}" type="button">${startEp} - ${endEp}</button>`;
+      }).join('');
 
-    renderChunk(activeChunk);
-
-    tabsContainer.onclick = (e) => {
-      const tab = e.target.closest('.range-tab');
-      if (!tab) return;
-      $$('.range-tab', tabsContainer).forEach((t) => t.classList.toggle('active', t === tab));
-      renderChunk(Number(tab.dataset.chunk));
-    };
-
-    if (moreBtn) moreBtn.hidden = true;
-  } else {
-    if (tabsContainer) tabsContainer.hidden = true;
-    container.innerHTML = eps.slice(0, 60).map((ep) => episodeItemHtml(ep, currentEp)).join('');
-    if (moreBtn) {
-      moreBtn.hidden = eps.length <= 60;
-      moreBtn.onclick = () => {
-        container.innerHTML = eps.map((ep) => episodeItemHtml(ep, currentEp)).join('');
-        moreBtn.hidden = true;
+      const renderChunk = (cIdx) => {
+        const slice = eps.slice(cIdx * CHUNK_SIZE, (cIdx + 1) * CHUNK_SIZE);
+        container.innerHTML = slice.map((ep) => episodeItemHtml(ep, currentEp)).join('');
       };
+
+      renderChunk(activeChunk);
+
+      tabsContainer.onclick = (e) => {
+        const tab = e.target.closest('.range-tab');
+        if (!tab) return;
+        $$('.range-tab', tabsContainer).forEach((t) => t.classList.toggle('active', t === tab));
+        renderChunk(Number(tab.dataset.chunk));
+      };
+
+      if (moreBtn) moreBtn.hidden = true;
+    } else {
+      if (tabsContainer) {
+        tabsContainer.hidden = true;
+        tabsContainer.innerHTML = '';
+        tabsContainer.onclick = null;
+      }
+      container.innerHTML = eps.slice(0, 60).map((ep) => episodeItemHtml(ep, currentEp)).join('');
+      if (moreBtn) {
+        moreBtn.hidden = eps.length <= 60;
+        moreBtn.onclick = () => {
+          container.innerHTML = eps.map((ep) => episodeItemHtml(ep, currentEp)).join('');
+          moreBtn.hidden = true;
+        };
+      }
     }
-  }
+  };
+
+  renderDefault();
+
+  // Expose the full list so the sidebar search can span every episode,
+  // not just the 50 currently shown in the active chunk.
+  container.episodeExplorer = {
+    eps,
+    currentEp,
+    renderDefault,
+    renderMatches(val) {
+      const q = val.trim().toLowerCase();
+      if (!q) {
+        renderDefault();
+        return;
+      }
+      if (tabsContainer) tabsContainer.hidden = true;
+      const hits = eps.filter((ep) =>
+        String(ep.n).includes(q) || String(ep.label || '').toLowerCase().includes(q));
+      container.innerHTML = hits.length
+        ? hits.slice(0, 200).map((ep) => episodeItemHtml(ep, currentEp)).join('')
+        : '<p class="empty-state">No episodes match your search.</p>';
+    }
+  };
 }
 
 function episodeItemHtml(ep, currentEp) {
@@ -994,6 +1081,19 @@ function setupGlobalEvents() {
 
   // Global clicks
   document.addEventListener('click', (e) => {
+    // Section "View All" / "Show Less" toggle
+    const viewAll = e.target.closest('[data-viewall]');
+    if (viewAll) {
+      e.preventDefault();
+      e.stopPropagation();
+      const section = document.getElementById('sec-' + viewAll.dataset.viewall);
+      const opened = toggleSectionExpand(section);
+      if (opened && section) {
+        section.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }
+      return;
+    }
+
     // Anime card navigation
     const cardLink = e.target.closest('.card-poster, .card-title');
     if (cardLink && !e.metaKey && !e.ctrlKey && !e.shiftKey) {
@@ -1041,6 +1141,7 @@ function setupGlobalEvents() {
           go('/#' + to).then(() => setTimeout(() => scrollToSection(to), 80));
         } else {
           history.replaceState(null, '', '/#' + to);
+          setActiveNav(to);
           scrollToSection(to);
         }
       }
@@ -1069,10 +1170,10 @@ function setupGlobalEvents() {
       return;
     }
 
-    // Hero dot click
-    const dot = e.target.closest('.hero-dot-btn');
-    if (dot && dot.dataset.idx) {
-      renderHeroSlide(Number(dot.dataset.idx));
+    // Hero thumbnail click
+    const thumb = e.target.closest('.hero-thumb');
+    if (thumb && thumb.dataset.idx !== undefined) {
+      renderHeroSlide(Number(thumb.dataset.idx));
       return;
     }
   });
@@ -1129,6 +1230,68 @@ function setupGlobalEvents() {
       loadStreamEmbed(token, meta);
     });
   }
+
+  // Fullscreen player — the reliable escape hatch on phones, where a
+  // cross-origin player with a fixed intrinsic size can't scale down.
+  const fsBtn = $('#btnFullscreen');
+  if (fsBtn) {
+    const fsTarget = () => {
+      const frame = $('#playerFrame');
+      // Fullscreen the iframe itself: the embedded page then gets the whole
+      // screen as its viewport, which is the most room it will ever get.
+      if (frame && !frame.hidden) return frame;
+      return $('#watchPlayer');
+    };
+
+    fsBtn.addEventListener('click', async () => {
+      const target = fsTarget();
+      if (!target) return;
+      try {
+        const active = document.fullscreenElement || document.webkitFullscreenElement;
+        if (active) {
+          await (document.exitFullscreen ? document.exitFullscreen() : document.webkitExitFullscreen());
+        } else if (target.requestFullscreen) {
+          await target.requestFullscreen();
+        } else if (target.webkitRequestFullscreen) {
+          target.webkitRequestFullscreen();
+        } else {
+          toast('Fullscreen is not supported on this browser', 'error');
+        }
+      } catch {
+        toast('Fullscreen was blocked by the browser', 'error');
+      }
+    });
+
+    const onFsChange = () => {
+      const on = !!(document.fullscreenElement || document.webkitFullscreenElement);
+      const label = fsBtn.querySelector('span');
+      if (label) label.textContent = on ? 'Exit' : 'Fullscreen';
+      fsBtn.classList.toggle('btn-glass', !on);
+    };
+    document.addEventListener('fullscreenchange', onFsChange);
+    document.addEventListener('webkitfullscreenchange', onFsChange);
+
+    // MEGA's embed is not responsive: flag it once so the user knows why.
+    let megaHinted = false;
+    const warnIfMega = () => {
+      if (megaHinted || !state.watch) return;
+      const active = (state.watch.servers || []).find((s) => s.token === state.watch.activeToken);
+      if (!active || !/^mega/i.test(active.host || '')) return;
+      megaHinted = true;
+      if (window.matchMedia('(max-width: 900px)').matches) {
+        toast('This server\'s player is not mobile-friendly — tap Fullscreen, or pick another server', 'error');
+      }
+    };
+    setInterval(warnIfMega, 1200);
+  }
+
+  // Fullscreen hotkey
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'k' || e.key === 'K') {
+      if (e.target && /^(INPUT|TEXTAREA)$/.test(e.target.tagName)) return;
+      if ($('#btnFullscreen')) $('#btnFullscreen').click();
+    }
+  });
 
   // Reload server button
   const reloadBtn = $('#reloadServerBtn');
@@ -1207,6 +1370,25 @@ function setupGlobalEvents() {
     });
   }
 
+  // Nav bell → jump to latest episodes
+  const bellBtn = $('#navBellBtn');
+  if (bellBtn) {
+    bellBtn.addEventListener('click', () => {
+      if (location.pathname !== '/' || parseRoute().view !== 'home') {
+        go('/#latest').then(() => setTimeout(() => scrollToSection('latest'), 80));
+      } else {
+        history.replaceState(null, '', '/#latest');
+        scrollToSection('latest');
+      }
+    });
+  }
+
+  // Nav avatar → My List
+  const avatarBtn = $('#navAvatarBtn');
+  if (avatarBtn) {
+    avatarBtn.addEventListener('click', () => openBookmarksView());
+  }
+
   // Jump to episode input (Detail page)
   const jumpBtn = $('#episodeJumpBtn');
   const jumpInput = $('#episodeJumpInput');
@@ -1221,13 +1403,18 @@ function setupGlobalEvents() {
     jumpInput.addEventListener('keydown', (e) => { if (e.key === 'Enter') doJump(); });
   }
 
-  // Sidebar episode search
+  // Sidebar episode search — spans every episode, not just the active chunk
   const sideSearch = $('#sidebarEpisodeSearch');
   if (sideSearch) {
     sideSearch.addEventListener('input', () => {
+      const list = $('#episodeList');
+      const explorer = list && list.episodeExplorer;
+      if (explorer) {
+        explorer.renderMatches(sideSearch.value);
+        return;
+      }
       const val = sideSearch.value.trim().toLowerCase();
-      const items = $$('.episode-item', $('#episodeList'));
-      items.forEach((item) => {
+      $$('.episode-item', list).forEach((item) => {
         const num = item.dataset.ep;
         const text = item.textContent.toLowerCase();
         item.hidden = val ? (!num.includes(val) && !text.includes(val)) : false;
