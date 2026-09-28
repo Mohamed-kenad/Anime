@@ -1,0 +1,10 @@
+{
+  "name": "animewit",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AnimeWit — anime catalog + in-site player backed by witanime.site",
+  "scripts": {
+    "start": "node server.js 3000",
+    "dev": "node server.js 3000"
+  }
+}

@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+  <meta name="description" content="AnimeWit — Ultra-fast, clean, and modern anime streaming platform backed by witanime.site. Watch the latest anime, movies, and episodes in HD.">
+  <meta name="theme-color" content="#07070a">
+  <meta name="color-scheme" content="dark">
+  <meta name="referrer" content="no-referrer">
+  <title>AnimeWit — Watch Anime Online in HD</title>
+
+  <!-- Preconnect & Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Outfit:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ff2d55'%3E%3Cpath d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/%3E%3C/svg%3E">
+
+  <!-- Stylesheet -->
+  <link rel="stylesheet" href="/style.css?v=2">
+</head>
+<body>
+  <!-- Global App Loader -->
+  <div id="loader" class="loader" aria-live="polite">
+    <div class="loader-content">
+      <div class="loader-spinner"></div>
+      <div class="loader-brand">
+        <span class="logo-mark">▲</span>
+        <span>Anime<span class="text-gradient">Wit</span></span>
+      </div>
+      <p class="loader-sub">Preparing latest anime catalog…</p>
+    </div>
+  </div>
+
+  <!-- Cinema Mode Dimming Overlay -->
+  <div id="cinemaOverlay" class="cinema-overlay" hidden></div>
+
+  <!-- Mobile Navigation Drawer -->
+  <div id="mobileDrawer" class="mobile-drawer" hidden>
+    <div class="drawer-backdrop" id="drawerBackdrop"></div>
+    <div class="drawer-panel">
+      <div class="drawer-header">
+        <a href="/" class="logo" data-nav="home">
+          <span class="logo-mark">▲</span>
+          <span>Anime<span class="text-gradient">Wit</span></span>
+        </a>
+        <button class="icon-btn" id="closeDrawer" aria-label="Close menu">✕</button>
+      </div>
+      <nav class="drawer-links">
+        <a href="/" data-nav="home" class="drawer-link active">Home</a>
+        <a href="/#trending" data-nav="trending" class="drawer-link">Trending</a>
+        <a href="/#latest" data-nav="latest" class="drawer-link">Latest Episodes</a>
+        <a href="/#seasonal" data-nav="seasonal" class="drawer-link">Seasonal</a>
+        <a href="/#top" data-nav="top" class="drawer-link">Top Anime</a>
+        <a href="/#movies" data-nav="movies" class="drawer-link">Movies</a>
+        <a href="#continue" data-nav="continue" class="drawer-link">Continue Watching</a>
+        <a href="#bookmarks" data-nav="bookmarks" class="drawer-link">My Bookmarks</a>
+      </nav>
+      <div class="drawer-footer">
+        <p class="drawer-hint">Tip: Press <kbd>/</kbd> anywhere to search</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Navigation Bar -->
+  <header class="navbar" id="navbar">
+    <div class="nav-container">
+      <button class="mobile-toggle" id="openDrawer" aria-label="Open menu" type="button">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+
+      <a href="/" class="logo" data-nav="home" aria-label="AnimeWit Home">
+        <span class="logo-mark">▲</span>
+        <span class="logo-text">Anime<span class="text-gradient">Wit</span></span>
+      </a>
+
+      <!-- Live Search Box -->
+      <div class="search-box" id="searchBox">
+        <svg class="search-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+        <input type="search" id="searchInput" placeholder="Search anime, movies, series…" autocomplete="off" spellcheck="false" aria-label="Search anime">
+        <span class="search-shortcut" title="Press / to focus">/</span>
+        <button class="search-clear" id="searchClear" aria-label="Clear search" hidden type="button">✕</button>
+        <div id="searchResults" class="search-dropdown" role="listbox"></div>
+      </div>
+
+      <!-- Desktop Nav Links -->
+      <nav class="nav-links">
+        <a href="/" data-nav="home" class="nav-link active">Home</a>
+        <a href="/#trending" data-nav="trending" class="nav-link">Trending</a>
+        <a href="/#latest" data-nav="latest" class="nav-link">Latest</a>
+        <a href="/#seasonal" data-nav="seasonal" class="nav-link">Seasonal</a>
+        <a href="/#top" data-nav="top" class="nav-link">Top</a>
+        <a href="/#movies" data-nav="movies" class="nav-link">Movies</a>
+        <button class="nav-link nav-btn-list" id="navBookmarksBtn" data-nav="bookmarks" type="button">
+          <span>My List</span>
+          <span class="nav-counter" id="bookmarkBadge" hidden>0</span>
+        </button>
+      </nav>
+    </div>
+  </header>
+
+  <!-- Main App Content -->
+  <main class="main-content">
+    <!-- VIEW: Home -->
+    <div id="homeView">
+      <!-- Cinematic Hero Carousel -->
+      <section class="hero" id="hero">
+        <div class="hero-bg" id="heroBg"></div>
+        <div class="hero-vignette"></div>
+        <div class="hero-container">
+          <div class="hero-card">
+            <div class="hero-badge-row">
+              <span class="badge-pill" id="heroEyebrow">Featured Anime</span>
+              <span class="badge-quality">HD 1080p</span>
+            </div>
+            <h1 class="hero-title" id="heroTitle">Watch Your Favorite Anime</h1>
+            <div class="hero-meta-row" id="heroMeta">
+              <span class="hero-rating" id="heroRating">★ 8.9</span>
+              <span class="hero-dot">·</span>
+              <span id="heroType">TV Series</span>
+              <span class="hero-dot">·</span>
+              <span id="heroYear">2026</span>
+            </div>
+            <p class="hero-synopsis" id="heroSubtitle">Stream the latest subbed anime episodes directly in fast, seamless HD without leaving the site.</p>
+            <div class="hero-actions">
+              <button class="btn btn-primary btn-lg" id="heroWatch" type="button">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                <span>Watch Now</span>
+              </button>
+              <button class="btn btn-glass btn-lg" id="heroDetails" type="button">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                <span>Anime Info</span>
+              </button>
+              <button class="btn btn-icon btn-glass" id="heroBookmark" title="Save to My List" type="button">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+              </button>
+            </div>
+          </div>
+          <!-- Hero Carousel Dots -->
+          <div class="hero-controls">
+            <button class="hero-arrow" id="heroPrev" aria-label="Previous featured anime">‹</button>
+            <div class="hero-dots" id="heroDots"></div>
+            <button class="hero-arrow" id="heroNext" aria-label="Next featured anime">›</button>
+          </div>
+        </div>
+
+        <!-- Live Platform Stats -->
+        <div class="hero-stats-bar">
+          <div class="stat-item"><span class="stat-val" id="statAnime">0</span><span class="stat-lbl">Anime Titles</span></div>
+          <div class="stat-sep"></div>
+          <div class="stat-item"><span class="stat-val" id="statEp">0</span><span class="stat-lbl">Episodes Online</span></div>
+          <div class="stat-sep"></div>
+          <div class="stat-item"><span class="stat-val" id="statMovie">0</span><span class="stat-lbl">Anime Movies</span></div>
+          <div class="stat-sep"></div>
+          <div class="stat-item"><span class="stat-val stat-badge">Fast HD</span><span class="stat-lbl">Multi-Server</span></div>
+        </div>
+      </section>
+
+      <!-- Continue Watching Row (from localStorage) -->
+      <section class="section" id="continueSection" hidden>
+        <div class="section-header">
+          <div class="section-title-wrap">
+            <span class="section-icon">🕒</span>
+            <h2 class="section-title">Continue Watching</h2>
+          </div>
+          <button class="btn-text" id="clearHistoryBtn" type="button">Clear history</button>
+        </div>
+        <div class="continue-carousel" id="continueGrid"></div>
+      </section>
+
+      <!-- My List / Bookmarks Section -->
+      <section class="section" id="bookmarksSection" hidden>
+        <div class="section-header">
+          <div class="section-title-wrap">
+            <span class="section-icon">📑</span>
+            <h2 class="section-title">My Bookmarks</h2>
+            <span class="section-counter" id="bookmarksCount">0</span>
+          </div>
+          <button class="btn-text" id="closeBookmarksBtn" type="button">Close My List ✕</button>
+        </div>
+        <div class="grid" id="bookmarksGrid"></div>
+      </section>
+
+      <!-- Curated Catalog Sections -->
+      <div id="homeSections">
+        <!-- Skeleton placeholders rendered initially by JS -->
+      </div>
+    </div>
+
+    <!-- VIEW: Search & Browse -->
+    <section class="section browse-view" id="browseSection" hidden>
+      <div class="section-header">
+        <div>
+          <span class="eyebrow-pill">CATALOG EXPLORER</span>
+          <h2 class="section-title" id="browseTitle">Search Results</h2>
+        </div>
+        <a href="/" class="btn btn-glass btn-sm" data-nav="home">← Back to Home</a>
+      </div>
+      <div class="browse-filters" id="browseFilters">
+        <button class="filter-pill active" data-filter="all">All</button>
+        <button class="filter-pill" data-filter="anime">Anime Series</button>
+        <button class="filter-pill" data-filter="movie">Movies</button>
+      </div>
+      <div class="grid" id="browseGrid"></div>
+    </section>
+
+    <!-- VIEW: Anime Detail -->
+    <section class="section anime-detail-view" id="animeSection" hidden>
+      <div class="detail-breadcrumb">
+        <a href="/" data-nav="home">Home</a>
+        <span class="breadcrumb-sep">/</span>
+        <span id="animeBreadcrumbKind">Anime</span>
+        <span class="breadcrumb-sep">/</span>
+        <span id="animeBreadcrumbTitle" class="breadcrumb-active">Anime Details</span>
+      </div>
+
+      <div class="detail-backdrop" id="animePageBanner"></div>
+
+      <div class="detail-hero">
+        <div class="detail-poster-wrap">
+          <img class="detail-poster" id="animePagePoster" src="" alt="Anime Poster" loading="lazy">
+          <button class="btn-poster-bookmark" id="detailBookmarkBtn" title="Bookmark Anime">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+            <span>Bookmark</span>
+          </button>
+        </div>
+
+        <div class="detail-info">
+          <div class="detail-tags-row">
+            <span class="badge-quality" id="animePageType">TV</span>
+            <span class="badge-status" id="animePageStatus">Completed</span>
+            <span class="badge-rating" id="animePageRating">★ 8.5</span>
+          </div>
+
+          <h1 class="detail-title" id="animePageTitle">Anime Title</h1>
+          <p class="detail-alt-title" id="animePageAltTitle"></p>
+
+          <div class="detail-meta-strip" id="animePageMeta"></div>
+          <div class="detail-genres" id="animePageTags"></div>
+
+          <div class="detail-synopsis-box">
+            <h3 class="synopsis-label">Synopsis</h3>
+            <p class="detail-synopsis" id="animePageSynopsis"></p>
+          </div>
+
+          <div class="detail-actions">
+            <button class="btn btn-primary btn-lg" id="animePageWatchFirst" type="button">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span>Watch Episode 1</span>
+            </button>
+            <button class="btn btn-glass btn-lg" id="animePageWatchLatest" type="button">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              <span>Watch Latest</span>
+            </button>
+            <a class="btn btn-glass" id="animePageSource" href="https://witanime.site" target="_blank" rel="noopener noreferrer">
+              <span>witanime.site</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+            </a>
+          </div>
+        </div>
+      </div>
+
+      <!-- Episode Browser -->
+      <div class="episode-browser-section">
+        <div class="episode-browser-header">
+          <div>
+            <h2 class="section-title">Episodes</h2>
+            <span id="animeEpisodeCount" class="episode-count-pill">0 episodes</span>
+          </div>
+          <div class="episode-controls">
+            <div class="episode-filter-box">
+              <input type="number" id="episodeJumpInput" placeholder="Jump to ep #" min="1">
+              <button class="btn btn-glass btn-sm" id="episodeJumpBtn">Go</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Range tabs for 50+ episode anime (One Piece, Naruto, etc.) -->
+        <div class="episode-range-tabs" id="animeRangeTabs" hidden></div>
+
+        <div class="episode-grid" id="animeEpisodePreview">
+          <p class="empty-state">Loading episode list…</p>
+        </div>
+        <button class="btn btn-glass btn-block episode-more" id="animeEpisodesMore" type="button" hidden>Show all episodes</button>
+      </div>
+    </section>
+
+    <!-- VIEW: Watch / Streaming Player -->
+    <section class="section watch-view" id="watchSection" hidden>
+      <div class="watch-top-bar">
+        <div class="watch-breadcrumb">
+          <a href="/" data-nav="home">Home</a>
+          <span class="breadcrumb-sep">/</span>
+          <a href="#" id="watchBreadcrumbLink">Anime</a>
+          <span class="breadcrumb-sep">/</span>
+          <span id="watchBreadcrumbEpisode" class="breadcrumb-active">Episode 1</span>
+        </div>
+
+        <div class="watch-top-actions">
+          <button class="btn btn-glass btn-sm" id="btnCinemaMode" title="Toggle Lights Off (L)" type="button">
+            <span>💡 Lights Off</span>
+          </button>
+          <button class="btn btn-glass btn-sm" id="btnTheaterMode" title="Toggle Theater Mode (F)" type="button">
+            <span>⛶ Theater</span>
+          </button>
+          <button class="btn btn-glass btn-sm" id="backToAnime" type="button">
+            <span>Details</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="watch-layout">
+        <!-- Main Player Area -->
+        <div class="watch-main">
+          <!-- Video Player Box with Ambient Glow -->
+          <div class="player-glow-wrap" id="playerGlowWrap">
+            <div class="player-ambient-glow" id="playerGlow"></div>
+            <div class="watch-player" id="watchPlayer" role="region" aria-label="Video Player">
+              <div class="player-state" id="playerState">
+                <div class="player-spinner"></div>
+                <h3 id="playerStateHeading">Loading Stream Player</h3>
+                <p id="playerStateText">Connecting to witanime.site streaming servers…</p>
+                <button class="btn btn-glass btn-sm" id="playerRetryBtn" hidden type="button">Retry connection</button>
+              </div>
+              <iframe id="playerFrame" title="Anime Player" allow="autoplay; fullscreen; encrypted-media; picture-in-picture" referrerpolicy="no-referrer" hidden></iframe>
+            </div>
+          </div>
+
+          <!-- Player Controls Bar -->
+          <div class="player-toolbar">
+            <div class="player-nav-group">
+              <button class="btn btn-glass btn-sm" id="previousEpisode" type="button" disabled>
+                <span>◀ Previous</span>
+              </button>
+              <button class="btn btn-primary btn-sm" id="nextEpisode" type="button">
+                <span>Next Episode ▶</span>
+              </button>
+            </div>
+
+            <div class="player-tools-group">
+              <label class="auto-next-toggle" title="Automatically advance to next episode">
+                <input type="checkbox" id="autoNextCheck" checked>
+                <span class="toggle-slider"></span>
+                <span class="toggle-text">Auto-Next</span>
+              </label>
+              <button class="btn btn-glass btn-sm" id="reloadServerBtn" title="Reload current stream" type="button">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+                <span>Reload</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- Streaming Server Selection -->
+          <div class="server-bar">
+            <div class="server-bar-header">
+              <div class="server-bar-title">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="8" rx="2" ry="2"/><rect x="2" y="14" width="20" height="8" rx="2" ry="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg>
+                <span>Streaming Servers</span>
+              </div>
+              <div class="server-qualities" id="serverQualities" role="tablist"></div>
+            </div>
+            <div class="server-list" id="serverList" role="tabpanel"></div>
+          </div>
+
+          <!-- Episode Info & Meta Box -->
+          <div class="now-playing-card">
+            <div class="now-playing-header">
+              <div>
+                <span class="now-playing-kicker">NOW STREAMING</span>
+                <h2 class="now-playing-title" id="watchAnimeTitle">Anime Title</h2>
+                <div class="now-playing-sub" id="watchEpisodeLabel">Episode 1</div>
+              </div>
+              <button class="btn btn-glass btn-sm" id="watchBookmarkBtn" type="button">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
+                <span>Bookmark</span>
+              </button>
+            </div>
+            <p class="now-playing-hint" id="watchEpisodeHint">Playing in-site via secure streaming proxy. If buffering, choose an alternate server above.</p>
+          </div>
+        </div>
+
+        <!-- Episode Sidebar -->
+        <aside class="episode-sidebar" aria-label="Episodes Sidebar">
+          <div class="sidebar-header">
+            <div class="sidebar-title-row">
+              <h3 class="sidebar-heading">All Episodes</h3>
+              <span class="sidebar-counter" id="episodeCount">0</span>
+            </div>
+            <div class="sidebar-search">
+              <input type="search" id="sidebarEpisodeSearch" placeholder="Search episode #..." autocomplete="off">
+            </div>
+            <!-- Range tabs for sidebar -->
+            <div class="sidebar-range-tabs" id="sidebarRangeTabs" hidden></div>
+          </div>
+          <div class="sidebar-episode-list" id="episodeList">
+            <p class="empty-state">Loading episodes…</p>
+          </div>
+        </aside>
+      </div>
+    </section>
+  </main>
+
+  <!-- Modern Clean Footer -->
+  <footer class="footer">
+    <div class="footer-container">
+      <div class="footer-top">
+        <div class="footer-brand">
+          <div class="logo">
+            <span class="logo-mark">▲</span>
+            <span>Anime<span class="text-gradient">Wit</span></span>
+          </div>
+          <p class="footer-tagline">Fast, modern, and lightweight anime streaming portal powered by witanime.site catalog.</p>
+        </div>
+        <div class="footer-nav">
+          <span class="footer-col-title">Navigation</span>
+          <a href="/" data-nav="home">Home</a>
+          <a href="/#trending" data-nav="trending">Trending Anime</a>
+          <a href="/#latest" data-nav="latest">Latest Episodes</a>
+          <a href="/#top" data-nav="top">Top Series</a>
+          <a href="/#movies" data-nav="movies">Movies</a>
+        </div>
+        <div class="footer-nav">
+          <span class="footer-col-title">Source & Data</span>
+          <a href="https://witanime.site" target="_blank" rel="noopener noreferrer">witanime.site</a>
+          <a href="/api/health" target="_blank">API Health Status</a>
+          <a href="#bookmarks" data-nav="bookmarks">My Saved List</a>
+        </div>
+      </div>
+      <div class="footer-bottom">
+        <p class="footer-disclaimer">Disclaimer: AnimeWit does not store any files on its servers. All videos and artwork are hosted by third-party services and witanime.site.</p>
+        <p class="footer-copy">© 2026 AnimeWit · Designed for Speed & Clean Aesthetics.</p>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Toast Notification -->
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+  <!-- Main Client Application Script -->
+  <script src="/app.js?v=2" defer></script>
+</body>
+</html>
