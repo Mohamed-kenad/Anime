@@ -4,7 +4,10 @@
   "private": true,
   "description": "AnimeWit — anime catalog + in-site player backed by witanime.site",
   "scripts": {
-    "start": "node server.js 3000",
-    "dev": "node server.js 3000"
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
   }
 }
