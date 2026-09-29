@@ -557,7 +557,7 @@ async function handleRequest(req, res) {
     /* API Endpoints */
     if (p.startsWith('/api/')) {
       if (p === '/api/health') {
-        return sendData(req, res, 200, { ok: true, timestamp: Date.now(), cachedItems: store.size });
+        return sendData(req, res, 200, { ok: true, timestamp: Date.now(), cachedItems: store.size, path: p });
       }
 
       if (p === '/api/home') {
