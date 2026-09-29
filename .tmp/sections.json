@@ -1,0 +1,87 @@
+﻿[
+    {
+        "id":  "az-latest-title",
+        "title":  "أحدث الإضافات",
+        "more":  "https://animezid.cam/newvideos.php"
+    },
+    {
+        "id":  "az-trending-title",
+        "title":  "الأكثر مشاهدة",
+        "more":  "https://animezid.cam/topvideos.php"
+    },
+    {
+        "id":  "az-category-169-title",
+        "title":  "أفلام جديدة",
+        "more":  "https://animezid.cam/category.php?cat=newvideos"
+    },
+    {
+        "id":  "az-category-218-title",
+        "title":  "حلقات جديدة",
+        "more":  "https://animezid.cam/category.php?cat=new-eps"
+    },
+    {
+        "id":  "az-category-87-title",
+        "title":  "أفلام رأس السنة",
+        "more":  "https://animezid.cam/category.php?cat=new-year-movies"
+    },
+    {
+        "id":  "az-category-5-title",
+        "title":  "ديزني بالمصري",
+        "more":  "https://animezid.cam/category.php?cat=disney-masr"
+    },
+    {
+        "id":  "az-category-12-title",
+        "title":  "سبيستون",
+        "more":  "https://animezid.cam/category.php?cat=spacetoon"
+    },
+    {
+        "id":  "az-category-14-title",
+        "title":  "الأنمي",
+        "more":  "https://animezid.cam/category.php?cat=anime"
+    },
+    {
+        "id":  "az-category-1-title",
+        "title":  "أحدث الافلام المضافة",
+        "more":  "https://animezid.cam/category.php?cat=new-movies"
+    },
+    {
+        "id":  "az-category-9-title",
+        "title":  "أفلام انيميشن مترجمة",
+        "more":  "https://animezid.cam/category.php?cat=subbed-animation"
+    },
+    {
+        "id":  "az-category-10-title",
+        "title":  "احدث حلقات الكرتون",
+        "more":  "https://animezid.cam/category.php?cat=new-series-eps"
+    },
+    {
+        "id":  "az-category-88-title",
+        "title":  "أحدث حلقات الأنمي",
+        "more":  "https://animezid.cam/category.php?cat=new-anime-eps"
+    },
+    {
+        "id":  "az-category-147-title",
+        "title":  "ديزني بالعربية الفصحى",
+        "more":  "https://animezid.cam/category.php?cat=disney-arabic"
+    },
+    {
+        "id":  "az-category-18-title",
+        "title":  "أفلام أجنبية",
+        "more":  "https://animezid.cam/category.php?cat=english-movies"
+    },
+    {
+        "id":  "az-category-19-title",
+        "title":  "أفلام لايف اكشن مدبلجة",
+        "more":  "https://animezid.cam/category.php?cat=dubbed-movies"
+    },
+    {
+        "id":  "az-category-150-title",
+        "title":  "مسلسلات ديزني",
+        "more":  "https://animezid.cam/category.php?cat=disney-series"
+    },
+    {
+        "id":  "az-category-17-title",
+        "title":  "مسلسلات انمي مدبلجة",
+        "more":  "https://animezid.cam/category.php?cat=dubbed-anime"
+    }
+]

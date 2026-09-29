@@ -1,6 +1,6 @@
 /**
  * AnimeWit — High-Performance Anime Streaming Client Application
- * Backed by witanime.site proxy API
+ * Backed by the animezid.cam catalog proxy
  */
 
 'use strict';
@@ -15,12 +15,19 @@ const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
 }[c]));
 
-// CDN blocks direct browser requests (403 via referer hotlink protection),
-// so all remote images must be served through the backend proxy.
-const imgProxy = (url) =>
-  typeof url === 'string' && url.startsWith('https://images.witanime.site/')
-    ? '/api/image?url=' + encodeURIComponent(url)
-    : url;
+// Upstream images load directly (its own CDN has no hotlink protection), except
+// hosts that block hotlinking (imgur 429s direct requests) which go through the
+// backend mirror chain; other failures are retried there too (setupGlobalEvents).
+const PROXY_HOSTS = ['i.imgur.com', 'imgur.com'];
+const imgProxy = (url) => {
+  const s = String(url || '');
+  if (s.startsWith('https://')) {
+    try {
+      if (PROXY_HOSTS.includes(new URL(s).hostname)) return '/api/image?url=' + encodeURIComponent(s);
+    } catch { /* relative / data: urls pass through */ }
+  }
+  return s;
+};
 
 // Placeholder SVG for broken or missing anime posters
 const POSTER_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 300 420%22 fill=%22%23131420%22%3E%3Crect width=%22300%22 height=%22420%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23646782%22 font-family=%22sans-serif%22 font-size=%2218%22%3EAnimeWit%3C/text%3E%3C/svg%3E";
@@ -246,16 +253,28 @@ function scrollToSection(key) {
 /* =========================================================================
    4. Cards & Grid Rendering
    ========================================================================= */
+// Mirror of the server's audio-state rule (for cached/bookmarked items without audio)
+function pickAudio(s) {
+  const t = String(s || '');
+  if (/مصري/.test(t)) return 'بالمصري';
+  if (/فصح/.test(t)) return 'مدبلج';
+  if (/مدبلج|دبلج/.test(t)) return 'مدبلج';
+  if (/مترجم/.test(t)) return 'مترجم';
+  return null;
+}
+
 function cardHtml(item) {
   const img = imgProxy(item.poster || item.banner || POSTER_PLACEHOLDER);
   const isEp = item.kind === 'watch';
   const href = isEp ? `/watch/${item.slug}/${item.ep}` : `/${item.kind || 'anime'}/${item.slug}`;
   const badgeText = isEp ? (item.label || `Ep ${item.ep}`) : (item.type || (item.kind === 'movie' ? 'Movie' : 'TV'));
   const badgeClass = isEp ? 'badge-episode' : (String(item.type || '').toLowerCase().includes('movie') || item.kind === 'movie' ? 'badge-movie' : 'badge-tv');
+  const audio = item.audio || pickAudio(item.title) || 'مترجم';
   const isSaved = Storage.isBookmarked(item.slug);
 
   return `
     <article class="anime-card" data-slug="${esc(item.slug)}" data-kind="${esc(item.kind)}" ${item.ep ? `data-ep="${item.ep}"` : ''}>
+      <span class="card-ribbon">${esc(audio)}</span>
       <a class="card-poster" href="${href}" title="${esc(item.title)}">
         <img src="${esc(img)}" alt="${esc(item.title)}" loading="lazy" decoding="async" referrerpolicy="no-referrer">
         <span class="card-badge ${badgeClass}">${esc(badgeText)}</span>
@@ -708,7 +727,7 @@ async function openDetail(slug, kind) {
   }
 
   if ($('#animePageSource')) {
-    $('#animePageSource').href = data.url || 'https://witanime.site';
+    $('#animePageSource').href = data.url || 'https://animezid.cam';
   }
 
   // Detail Bookmark button
@@ -739,12 +758,12 @@ async function openDetail(slug, kind) {
     if (btnFirst) {
       btnFirst.disabled = false;
       btnFirst.querySelector('span').textContent = `Watch Episode ${firstEp.n}`;
-      btnFirst.onclick = () => go(`/watch/${data.slug}/${firstEp.n}`);
+      btnFirst.onclick = () => go(`/watch/${firstEp.slug || data.slug}/${firstEp.n}`);
     }
     if (btnLatest) {
       btnLatest.disabled = false;
       btnLatest.querySelector('span').textContent = `Watch Latest (Ep ${latestEp.n})`;
-      btnLatest.onclick = () => go(`/watch/${data.slug}/${latestEp.n}`);
+      btnLatest.onclick = () => go(`/watch/${latestEp.slug || data.slug}/${latestEp.n}`);
     }
   } else {
     if (btnFirst) btnFirst.disabled = true;
@@ -845,7 +864,8 @@ function renderEpisodeExplorer(container, eps, currentEp, tabsContainer, moreBtn
 function episodeItemHtml(ep, currentEp) {
   const isCurrent = ep.n === currentEp;
   return `
-    <button class="episode-item ${isCurrent ? 'is-current' : ''}" data-ep="${ep.n}" data-slug="${esc(ep.slug || '')}" type="button">
+    <button class="episode-item ${isCurrent ? 'is-current' : ''}" data-ep="${ep.n}" data-slug="${esc(ep.slug || '')}" type="button" style="
+    margin-top: 5px;">
       <span class="episode-number">${ep.n}</span>
       <span class="episode-copy">
         <span class="episode-title">${esc(ep.label || `Episode ${ep.n}`)}</span>
@@ -869,7 +889,7 @@ async function openWatch(slug, ep) {
   const stateEl = $('#playerState');
   if (stateEl) stateEl.hidden = false;
   if ($('#playerStateHeading')) $('#playerStateHeading').textContent = 'Loading Stream Player';
-  if ($('#playerStateText')) $('#playerStateText').textContent = 'Connecting to witanime streaming proxy…';
+  if ($('#playerStateText')) $('#playerStateText').textContent = 'Connecting to animezid streaming proxy…';
   if ($('#playerRetryBtn')) $('#playerRetryBtn').hidden = true;
 
   resetPlayerFrame();
@@ -906,6 +926,20 @@ async function openWatch(slug, ep) {
       $('#watchBreadcrumbLink').textContent = state.anime.title;
       $('#watchBreadcrumbLink').href = `/${state.anime.kind || 'anime'}/${slug}`;
     }
+
+    // The route episode number can differ from the episode index (upstream numbers
+    // some series per-season) → resolve the canonical entry by number, then by video id.
+    const list = state.anime.episodes || [];
+    let canonIdx = list.findIndex((x) => x.n === ep);
+    if (canonIdx < 0) canonIdx = list.findIndex((x) => x.slug === slug);
+    if (canonIdx >= 0 && list[canonIdx].n !== ep) {
+      ep = list[canonIdx].n;
+      if (state.watch) state.watch.ep = ep;
+      history.replaceState(null, '', `/watch/${encodeURIComponent(slug)}/${ep}`);
+      if ($('#watchBreadcrumbEpisode')) $('#watchBreadcrumbEpisode').textContent = `Episode ${ep}`;
+      if ($('#watchEpisodeLabel')) $('#watchEpisodeLabel').textContent = `Episode ${ep}`;
+    }
+
     document.title = `Episode ${ep} · ${state.anime.title} · AnimeWit`;
 
     // Record in watch history
@@ -932,14 +966,14 @@ async function openWatch(slug, ep) {
   if (prevBtn) {
     prevBtn.disabled = !(epIdx > 0);
     prevBtn.onclick = () => {
-      if (epIdx > 0) go(`/watch/${slug}/${eps[epIdx - 1].n}`);
+      if (epIdx > 0) go(`/watch/${eps[epIdx - 1].slug || slug}/${eps[epIdx - 1].n}`);
     };
   }
 
   if (nextBtn) {
     nextBtn.disabled = !(epIdx >= 0 && epIdx < eps.length - 1);
     nextBtn.onclick = () => {
-      if (epIdx >= 0 && epIdx < eps.length - 1) go(`/watch/${slug}/${eps[epIdx + 1].n}`);
+      if (epIdx >= 0 && epIdx < eps.length - 1) go(`/watch/${eps[epIdx + 1].slug || slug}/${eps[epIdx + 1].n}`);
     };
   }
 
@@ -1068,10 +1102,10 @@ function setupGlobalEvents() {
     if (e.target && e.target.tagName === 'IMG') {
       const img = e.target;
       const src = img.src || '';
-      // If cross-origin image failed, retry via backend proxy
-      if (src.startsWith('https://images.witanime.site/') && !img.dataset.proxied) {
+      // If the image failed, retry once through the backend proxy, then placeholder
+      if (src.startsWith('https://') && !img.dataset.proxied) {
         img.dataset.proxied = '1';
-        img.src = imgProxy(src);
+        img.src = '/api/image?url=' + encodeURIComponent(src);
       } else if (!img.dataset.fallback) {
         img.dataset.fallback = '1';
         img.src = POSTER_PLACEHOLDER;
@@ -1165,7 +1199,7 @@ function setupGlobalEvents() {
     const epBtn = e.target.closest('.episode-item');
     if (epBtn && epBtn.dataset.ep) {
       const epNum = Number(epBtn.dataset.ep);
-      const slug = (state.anime && state.anime.slug) || (state.watch && state.watch.slug);
+      const slug = epBtn.dataset.slug || (state.anime && state.anime.slug) || (state.watch && state.watch.slug);
       if (slug) go(`/watch/${slug}/${epNum}`);
       return;
     }
@@ -1396,7 +1430,10 @@ function setupGlobalEvents() {
     const doJump = () => {
       const val = Number(jumpInput.value);
       if (!val || val < 1) return;
-      const slug = (state.anime && state.anime.slug) || (state.watch && state.watch.slug);
+      const eps = (state.anime && state.anime.episodes) || [];
+      const target = eps.find((x) => x.n === val);
+      const routeSlug = (state.anime && state.anime.slug) || (state.watch && state.watch.slug);
+      const slug = (target && target.slug) || routeSlug;
       if (slug) go(`/watch/${slug}/${val}`);
     };
     jumpBtn.addEventListener('click', doJump);

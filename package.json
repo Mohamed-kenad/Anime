@@ -2,7 +2,7 @@
   "name": "animewit",
   "version": "1.0.0",
   "private": true,
-  "description": "AnimeWit — anime catalog + in-site player backed by witanime.site",
+  "description": "AnimeWit - anime catalog + in-site player backed by animezid.cam",
   "scripts": {
     "start": "node server.js",
     "dev": "node server.js"
