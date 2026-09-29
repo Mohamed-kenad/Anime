@@ -32,28 +32,56 @@ const imgProxy = (url) => {
 // Placeholder SVG for broken or missing anime posters
 const POSTER_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 300 420%22 fill=%22%23131420%22%3E%3Crect width=%22300%22 height=%22420%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23646782%22 font-family=%22sans-serif%22 font-size=%2218%22%3EAnimeWit%3C/text%3E%3C/svg%3E";
 
-// Hero background quality: upstream art is 520px portrait (some TMDB w300),
-// stretched full-bleed on desktop. TMDB sizes upgrade to w1280 (true HD);
-// all other hosts go through weserv at 1600px wide so the browser scales
-// ~1:1 instead of ~3x. Thumbnails stay on the small originals on purpose.
-const heroHiRes = (url) => {
-  const s = String(url || '');
-  if (!s) return s;
-  return s.replace(/image\.tmdb\.org\/t\/p\/w(?:200|300|342|500|780)\//, 'image.tmdb.org/t/p/w1280/');
-};
+// Image sizing: upstream posters are 520px+ (some TMDB w1280) but cards show
+// at ~210-261px and tiny thumbs at <=92px, so ship resized copies. Weserv
+// resizes server-side and serves 1y cache headers; `output=webp` is added
+// only when the browser proves WebP support (canvas probe), so old browsers
+// keep JPEG. <img> failures fall back to the backend mirror via the global
+// error handler; CSS backgrounds fall back inline at each call site.
+let WEBP_OK = false;
+try {
+  WEBP_OK = document.createElement('canvas').toDataURL('image/webp').indexOf('data:image/webp') === 0;
+} catch { WEBP_OK = false; }
 
-// HD URL for the full-bleed hero background only (same layout as before).
-const heroBgUrl = (url) => {
+const isTmdb = (s) => String(s || '').includes('image.tmdb.org');
+const tmdbSize = (url, size) => String(url || '').replace(
+  /image\.tmdb\.org\/t\/p\/w(?:92|154|185|342|500|780|1280|original)\//,
+  `image.tmdb.org/t/p/${size}/`
+);
+const weservUrl = (url, w, q) => {
+  try {
+    const u = new URL(String(url));
+    if (u.protocol !== 'https:') return String(url);
+    return 'https://images.weserv.nl/?url=' + encodeURIComponent(u.host + u.pathname)
+      + `&w=${w}&q=${q}` + (WEBP_OK ? '&output=webp' : '');
+  } catch { return String(url); }
+};
+const heroHiRes = (url) => (isTmdb(url) ? tmdbSize(url, 'w1280') : String(url || ''));
+
+// Image quality first: serve near-native resolution at high quality.
+// Weserv still fronts non-TMDB art (1y cache headers), but with no effective
+// downscale: w=520 matches the upstream native width, q=85 keeps detail.
+// TMDB maps to large buckets. Tiny thumbs stay small (nothing visible lost).
+const heroBgUrl = (url, small) => {
   const hi = heroHiRes(url);
   if (!hi) return hi;
   if (hi.includes('image.tmdb.org')) return hi;
-  try {
-    const u = new URL(hi);
-    if (u.protocol !== 'https:') return hi;
-    // Strip the cache-buster so the CDN + browser cache hits across deploys.
-    const src = u.host + u.pathname;
-    return 'https://images.weserv.nl/?url=' + encodeURIComponent(src) + '&w=1600&q=80';
-  } catch { return hi; }
+  return small ? weservUrl(hi, 1024, 82) : weservUrl(hi, 1600, 88);
+};
+const isSmallViewport = () => {
+  try { return window.matchMedia('(max-width: 768px)').matches; } catch { return false; }
+};
+
+// Cards show at ~210px: 520px file = full retina-or-better fidelity.
+const cardImg = (url) => {
+  const s = String(url || '');
+  if (!s) return s;
+  return isTmdb(s) ? tmdbSize(s, 'w500') : weservUrl(s, 520, 85);
+};
+const thumbImg = (url) => {
+  const s = String(url || '');
+  if (!s) return s;
+  return isTmdb(s) ? tmdbSize(s, 'w342') : weservUrl(s, 320, 80);
 };
 
 /* Client-side memory cache for zero-latency page transitions */
@@ -288,7 +316,8 @@ function pickAudio(s) {
 }
 
 function cardHtml(item) {
-  const img = imgProxy(item.poster || item.banner || POSTER_PLACEHOLDER);
+  const raw = item.poster || item.banner || '';
+  const img = imgProxy(cardImg(raw) || POSTER_PLACEHOLDER);
   const isEp = item.kind === 'watch';
   const href = isEp ? `/watch/${item.slug}/${item.ep}` : `/${item.kind || 'anime'}/${item.slug}`;
   const badgeText = isEp ? (item.label || `Ep ${item.ep}`) : (item.type || (item.kind === 'movie' ? 'Movie' : 'TV'));
@@ -461,7 +490,7 @@ function renderHeroSlide(idx) {
   const bg = $('#heroBg');
   const raw = item.banner || item.poster || '';
   if (bg && raw) {
-    const hd = heroBgUrl(raw);
+    const hd = heroBgUrl(raw, isSmallViewport());
     const finalUrl = imgProxy(hd);
     // Preload the HD file, then swap — avoids flashing a half-decoded image.
     // First paint sets it instantly; later slides swap on load.
@@ -479,7 +508,7 @@ function renderHeroSlide(idx) {
     if (next && next.banner) {
       const warm = new Image();
       try { warm.referrerPolicy = 'no-referrer'; } catch { /* older browsers */ }
-      warm.src = imgProxy(heroBgUrl(next.banner || next.poster || ''));
+      warm.src = imgProxy(heroBgUrl(next.banner || next.poster || '', isSmallViewport()));
     }
   }
 
@@ -532,7 +561,7 @@ function renderHeroSlide(idx) {
     if (thumbsBox.childElementCount !== list.length) {
       thumbsBox.innerHTML = list.map((it, i) => `
         <button class="hero-thumb" type="button" data-idx="${i}" title="${esc(it.title)}" aria-label="Show ${esc(it.title)}">
-          <img src="${esc(imgProxy(it.banner || it.poster || POSTER_PLACEHOLDER))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">
+          <img src="${esc(imgProxy(thumbImg(it.banner || it.poster) || POSTER_PLACEHOLDER))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">
         </button>
       `).join('');
     }
@@ -566,7 +595,7 @@ function renderContinueWatching() {
   grid.innerHTML = history.map((item) => `
     <div class="continue-card" data-slug="${esc(item.slug)}" data-ep="${item.ep}">
       <div class="continue-thumb-wrap">
-        <img class="continue-thumb" src="${esc(imgProxy(item.poster || POSTER_PLACEHOLDER))}" alt="" loading="lazy" referrerpolicy="no-referrer">
+        <img class="continue-thumb" src="${esc(imgProxy(thumbImg(item.poster) || POSTER_PLACEHOLDER))}" alt="" loading="lazy" referrerpolicy="no-referrer">
         <div class="continue-progress-bar"><div class="continue-progress-fill"></div></div>
       </div>
       <button class="continue-remove" data-slug="${esc(item.slug)}" data-ep="${item.ep}" title="Remove">✕</button>
@@ -635,7 +664,7 @@ function setupSearch() {
         }
         dd.innerHTML = items.slice(0, 8).map((it) => `
           <button class="search-item" data-kind="${esc(it.kind)}" data-slug="${esc(it.slug)}" ${it.ep ? `data-ep="${it.ep}"` : ''} type="button">
-            <img class="search-thumb" src="${esc(imgProxy(it.poster || POSTER_PLACEHOLDER))}" alt="" loading="lazy" referrerpolicy="no-referrer">
+            <img class="search-thumb" src="${esc(imgProxy(thumbImg(it.poster) || POSTER_PLACEHOLDER))}" alt="" loading="lazy" referrerpolicy="no-referrer">
             <div class="search-item-info">
               <div class="search-item-title">${esc(it.title)}</div>
               <div class="search-item-meta">
@@ -752,13 +781,23 @@ async function openDetail(slug, kind) {
 
   const poster = $('#animePagePoster');
   if (poster) {
-    poster.src = imgProxy(data.poster || POSTER_PLACEHOLDER);
+    poster.src = imgProxy(cardImg(data.poster) || POSTER_PLACEHOLDER);
+    poster.removeAttribute('srcset');
     poster.alt = data.title;
   }
 
   const banner = $('#animePageBanner');
   if (banner && data.banner) {
-    banner.style.backgroundImage = `url('${imgProxy(data.banner)}')`;
+    // Same portrait-source problem as the hero: serve the HD background URL
+    // with a direct fallback so a CDN miss never leaves a broken backdrop.
+    const rawBanner = data.banner;
+    const hdBanner = imgProxy(heroBgUrl(rawBanner, isSmallViewport()));
+    const preBanner = new Image();
+    try { preBanner.referrerPolicy = 'no-referrer'; } catch { /* older browsers */ }
+    preBanner.onload = () => { banner.style.backgroundImage = `url('${hdBanner}')`; };
+    preBanner.onerror = () => { banner.style.backgroundImage = `url('${imgProxy(rawBanner)}')`; };
+    preBanner.src = hdBanner;
+    if (!banner.style.backgroundImage) banner.style.backgroundImage = `url('${hdBanner}')`;
   }
 
   if ($('#animePageType')) $('#animePageType').textContent = data.kind === 'movie' ? 'Movie' : 'TV Series';

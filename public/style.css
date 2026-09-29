@@ -27,7 +27,7 @@
 
   --text-primary: #ffffff;
   --text-secondary: #b6b8c7;
-  --text-muted: #6c6e80;
+  --text-muted: #a3a7bc;
   --border-subtle: rgba(255, 255, 255, 0.08);
   --border-active: rgba(255, 45, 85, 0.5);
 
@@ -840,6 +840,11 @@ input, button, select {
   max-width: 540px;
   text-shadow: 0 2px 14px rgba(0, 0, 0, 0.7);
 }
+/* Reserve the 3-line clamp height so slide changes with short text don't
+   shift the actions row (CLS). 15px * 1.72 * 3 ≈ 77px. */
+@media (min-width: 769px) {
+  .hero-synopsis { min-height: 77px; }
+}
 .hero-actions {
   display: flex;
   align-items: center;
@@ -1134,15 +1139,16 @@ input, button, select {
   letter-spacing: 0.5px;
   box-shadow: 0 3px 10px rgba(0, 0, 0, 0.5);
 }
-.badge-tv { background: var(--accent); color: #fff; }
-.badge-movie { background: #8b5cf6; color: #fff; }
-.badge-episode { background: #06b6d4; color: #fff; }
+.badge-tv { background: #e11d48; color: #fff; }
+.badge-movie { background: #7c3aed; color: #fff; }
+.badge-episode { background: #0e7490; color: #fff; }
 
 /* Audio/language ribbon (top-left corner) - folded corner ribbon technique */
 .card-ribbon {
   font-size: 13.5px;
   font-weight: 900;
-  color: #fff;
+  /* Bright orange fill needs near-black text for 4.5:1 contrast. */
+  color: #2a1503;
 }
 .card-ribbon {
   --f: .5em; /* control the folded part */
@@ -2290,7 +2296,7 @@ input, button, select {
     background:
       linear-gradient(180deg, rgba(6, 6, 10, 0.8) 0%, rgba(6, 6, 10, 0.5) 30%, rgba(6, 6, 10, 0.9) 80%, var(--bg-base) 100%);
   }
-  .section { padding: 32px 16px 8px; }
+  .section { padding: 54px 16px 8px; }
   .grid { grid-template-columns: repeat(auto-fill, minmax(145px, 1fr)); gap: 14px; }
   .rail-track { --rail-gap: 12px; }
   .rail-track > .anime-card { flex-basis: 158px; width: 158px; }

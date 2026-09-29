@@ -1,0 +1,22 @@
+# AnimeWit
+
+> Fast anime streaming catalog and in-site player backed by animezid.cam.
+
+## Browse
+
+- [Home](/)
+- [Search](/search)
+- [Trending](/#trending)
+- [Latest episodes](/#latest)
+- [Movies](/#movies)
+- [Top anime](/#top)
+
+## Catalog API
+
+- [Home feed](/api/home)
+- [Search API](/api/search?q=naruto)
+- [Health check](/api/health)
+
+## Sources
+
+- [Upstream catalog](https://animezid.cam)
