@@ -548,8 +548,8 @@ function fail(res, err) {
   sendData({ headers: {} }, res, code, { error: (err && err.message) || 'Upstream service error' });
 }
 
-/* ---------------- HTTP Server ---------------- */
-const server = http.createServer(async (req, res) => {
+/* ---------------- Request Handler ---------------- */
+async function handleRequest(req, res) {
   const u = new URL(req.url, 'http://localhost');
   const p = u.pathname;
 
@@ -683,6 +683,17 @@ const server = http.createServer(async (req, res) => {
   } catch (err) {
     fail(res, err);
   }
+}
+
+/* ---------------- HTTP Server ---------------- */
+const server = http.createServer((req, res) => {
+  Promise.resolve(handleRequest(req, res)).catch((err) => {
+    console.error('[Unhandled]', err && err.stack);
+    if (!res.writableEnded) {
+      res.statusCode = 500;
+      res.end('Internal Server Error');
+    }
+  });
 });
 
 if (require.main === module) {
@@ -701,4 +712,4 @@ if (require.main === module) {
   });
 }
 
-module.exports = { server, apiHome, apiSearch, apiAnime, apiServers, resolveEmbed };
+module.exports = { server, handleRequest, apiHome, apiSearch, apiAnime, apiServers, resolveEmbed };
