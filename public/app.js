@@ -32,6 +32,30 @@ const imgProxy = (url) => {
 // Placeholder SVG for broken or missing anime posters
 const POSTER_PLACEHOLDER = "data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 300 420%22 fill=%22%23131420%22%3E%3Crect width=%22300%22 height=%22420%22/%3E%3Ctext x=%2250%25%22 y=%2250%25%22 dominant-baseline=%22middle%22 text-anchor=%22middle%22 fill=%22%23646782%22 font-family=%22sans-serif%22 font-size=%2218%22%3EAnimeWit%3C/text%3E%3C/svg%3E";
 
+// Hero background quality: upstream art is 520px portrait (some TMDB w300),
+// stretched full-bleed on desktop. TMDB sizes upgrade to w1280 (true HD);
+// all other hosts go through weserv at 1600px wide so the browser scales
+// ~1:1 instead of ~3x. Thumbnails stay on the small originals on purpose.
+const heroHiRes = (url) => {
+  const s = String(url || '');
+  if (!s) return s;
+  return s.replace(/image\.tmdb\.org\/t\/p\/w(?:200|300|342|500|780)\//, 'image.tmdb.org/t/p/w1280/');
+};
+
+// HD URL for the full-bleed hero background only (same layout as before).
+const heroBgUrl = (url) => {
+  const hi = heroHiRes(url);
+  if (!hi) return hi;
+  if (hi.includes('image.tmdb.org')) return hi;
+  try {
+    const u = new URL(hi);
+    if (u.protocol !== 'https:') return hi;
+    // Strip the cache-buster so the CDN + browser cache hits across deploys.
+    const src = u.host + u.pathname;
+    return 'https://images.weserv.nl/?url=' + encodeURIComponent(src) + '&w=1600&q=80';
+  } catch { return hi; }
+};
+
 /* Client-side memory cache for zero-latency page transitions */
 const apiCache = new Map();
 
@@ -201,7 +225,7 @@ function go(url, { replace = false } = {}) {
 async function handleRoute() {
   const r = parseRoute();
   stopHeroSlider();
-  document.title = 'AnimeWit';
+  document.title = 'AnimeWit — Watch Anime Online in HD';
 
   // Highlight desktop nav
   if (r.view === 'home') setActiveNav(r.hash ? r.hash.replace('#', '') : 'home');
@@ -435,8 +459,28 @@ function renderHeroSlide(idx) {
   const item = list[idx];
 
   const bg = $('#heroBg');
-  if (bg && item.banner) {
-    bg.style.setProperty('--hero-img', `url('${imgProxy(item.banner)}')`);
+  const raw = item.banner || item.poster || '';
+  if (bg && raw) {
+    const hd = heroBgUrl(raw);
+    const finalUrl = imgProxy(hd);
+    // Preload the HD file, then swap — avoids flashing a half-decoded image.
+    // First paint sets it instantly; later slides swap on load.
+    if (!bg.style.getPropertyValue('--hero-img')) {
+      bg.style.setProperty('--hero-img', `url('${finalUrl}')`);
+    }
+    const pre = new Image();
+    pre.decoding = 'async';
+    try { pre.referrerPolicy = 'no-referrer'; } catch { /* older browsers */ }
+    pre.onload = () => bg.style.setProperty('--hero-img', `url('${finalUrl}')`);
+    pre.onerror = () => bg.style.setProperty('--hero-img', `url('${imgProxy(raw)}')`);
+    pre.src = finalUrl;
+    // Warm the next slide so auto-advance never shows a blurry progressive frame.
+    const next = list[(idx + 1) % list.length];
+    if (next && next.banner) {
+      const warm = new Image();
+      try { warm.referrerPolicy = 'no-referrer'; } catch { /* older browsers */ }
+      warm.src = imgProxy(heroBgUrl(next.banner || next.poster || ''));
+    }
   }
 
   if ($('#heroEyebrow')) $('#heroEyebrow').textContent = item.kind === 'watch' ? 'NEW EPISODE RELEASE' : 'FEATURED ANIME';
@@ -481,14 +525,18 @@ function renderHeroSlide(idx) {
     };
   }
 
-  // Thumbnail rail
+  // Thumbnail rail — built once, then only the active class flips.
+  // (Rebuilding innerHTML on every 7s tick recreates all <img> nodes.)
   const thumbsBox = $('#heroThumbs');
   if (thumbsBox) {
-    thumbsBox.innerHTML = list.map((it, i) => `
-      <button class="hero-thumb ${i === idx ? 'active' : ''}" type="button" data-idx="${i}" title="${esc(it.title)}" aria-label="Show ${esc(it.title)}">
-        <img src="${esc(imgProxy(it.banner || it.poster || POSTER_PLACEHOLDER))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">
-      </button>
-    `).join('');
+    if (thumbsBox.childElementCount !== list.length) {
+      thumbsBox.innerHTML = list.map((it, i) => `
+        <button class="hero-thumb" type="button" data-idx="${i}" title="${esc(it.title)}" aria-label="Show ${esc(it.title)}">
+          <img src="${esc(imgProxy(it.banner || it.poster || POSTER_PLACEHOLDER))}" alt="" loading="lazy" decoding="async" referrerpolicy="no-referrer">
+        </button>
+      `).join('');
+    }
+    $$('.hero-thumb', thumbsBox).forEach((b, i) => b.classList.toggle('active', i === idx));
   }
 }
 
@@ -647,6 +695,7 @@ async function openSearch(q) {
   const title = $('#browseTitle');
   const grid = $('#browseGrid');
   if (title) title.textContent = q ? `Results for "${q}"` : 'Catalog Search';
+  document.title = q ? `${q} — Search · AnimeWit` : 'Search · AnimeWit';
   if (!grid) return;
 
   grid.innerHTML = renderSkeletonGrid(8);
