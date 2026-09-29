@@ -712,4 +712,15 @@ if (require.main === module) {
   });
 }
 
-module.exports = { server, handleRequest, apiHome, apiSearch, apiAnime, apiServers, resolveEmbed };
+/* Vercel loads this module as the function entry and requires the default export to be
+   a function or an http.Server. Export the handler itself as the default, and hang the
+   named exports off it (functions are objects, so both styles keep working). */
+module.exports = handleRequest;
+module.exports.default = handleRequest;
+module.exports.handleRequest = handleRequest;
+module.exports.server = server;
+module.exports.apiHome = apiHome;
+module.exports.apiSearch = apiSearch;
+module.exports.apiAnime = apiAnime;
+module.exports.apiServers = apiServers;
+module.exports.resolveEmbed = resolveEmbed;
