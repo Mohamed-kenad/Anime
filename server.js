@@ -18,7 +18,7 @@ const crypto = require('crypto');
 const PORT = Number(process.env.PORT) || Number(process.argv[2]) || 3000;
 const BASE = 'https://witanime.site';
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
-const ROOT = __dirname;
+const ROOT = fs.existsSync(path.join(__dirname, 'public')) ? path.join(__dirname, 'public') : __dirname;
 const TTL = {
   home: 3 * 60e3,       // 3 min
   search: 5 * 60e3,     // 5 min

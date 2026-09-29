@@ -5,15 +5,14 @@
       "maxDuration": 60
     }
   },
-  "includeFiles": [
-    "index.html",
-    "style.css",
-    "app.js"
-  ],
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/api/(.*)",
       "destination": "/api/index"
+    },
+    {
+      "source": "/((?!api/).*)",
+      "destination": "/index.html"
     }
   ]
 }
