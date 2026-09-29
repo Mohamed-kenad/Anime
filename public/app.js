@@ -1126,13 +1126,52 @@ function resetPlayerFrame() {
   const frame = document.createElement('iframe');
   frame.id = 'playerFrame';
   frame.title = 'AnimeWit Player';
-  frame.setAttribute('allow', 'autoplay; fullscreen; encrypted-media; picture-in-picture');
+  frame.setAttribute('allow', 'autoplay; fullscreen; encrypted-media; picture-in-picture; storage-access');
   frame.setAttribute('referrerpolicy', 'no-referrer');
   frame.allowFullscreen = true;
   frame.hidden = true;
   if (old) old.replaceWith(frame);
   else if ($('#watchPlayer')) $('#watchPlayer').appendChild(frame);
   return frame;
+}
+
+/* Providers fronted by reCAPTCHA / Cloudflare Turnstile cannot finish their
+   challenge in a cross-origin frame: the challenge runs in a nested iframe that
+   Google/Cloudflare sandbox themselves, and the embedder cannot add
+   allow-storage-access-by-user-activation to a frame it does not own. The
+   provider then falls back to a top-level google.com interstitial, which
+   Chrome refuses to frame (X-Frame-Options: sameorigin) and the player dies
+   silently — no load event, no error, just a blank box.
+
+   Note that granting storage access (the storage-access permissions policy plus
+   the sandbox token) is necessary but NOT sufficient: Turnstile still refuses
+   to solve inside a third-party frame even once cookies are unblocked, which
+   is why the challenge frame carries sec-fetch-storage-access: active and
+   still fails.
+
+   A cross-origin frame that loaded fine also reports a null contentDocument, so
+   null alone proves nothing. We only flag the player when no load event has
+   arrived within the window, which is what a refused frame looks like. */
+function watchPlayerFrame(frame) {
+  let settled = false;
+  const done = () => { settled = true; };
+  const timer = setTimeout(() => {
+    if (settled || !frame.isConnected) return;
+    if (frame.contentDocument) return;
+    const stateEl = $('#playerState');
+    if (stateEl) stateEl.hidden = false;
+    if ($('#playerStateHeading')) $('#playerStateHeading').textContent = 'Player Blocked';
+    if ($('#playerStateText')) {
+      $('#playerStateText').textContent =
+        'This server sits behind a bot check that cannot complete inside a page frame. Use "Open in Tab", or pick another server above.';
+    }
+    if ($('#playerRetryBtn')) $('#playerRetryBtn').hidden = true;
+    toast('Player blocked by anti-bot check — try another server', 'error');
+  }, 9000);
+
+  frame.addEventListener('load', done, { once: true });
+  frame.addEventListener('error', done, { once: true });
+  return () => clearTimeout(timer);
 }
 
 function isSafeEmbed(u) {
@@ -1147,7 +1186,7 @@ function isSafeEmbed(u) {
   } catch { return false; }
 }
 
-async function loadStreamEmbed(token, serverMeta) {
+async function loadStreamEmbed(token, serverMeta, { fresh = false } = {}) {
   if (!state.watch) return;
   const { slug, ep } = state.watch;
   const stateEl = $('#playerState');
@@ -1162,16 +1201,24 @@ async function loadStreamEmbed(token, serverMeta) {
   const frame = resetPlayerFrame();
 
   try {
-    const res = await api(`/api/embed/${encodeURIComponent(slug)}/${ep}?token=${encodeURIComponent(token)}`);
+    // Never serve embeds from the client memory cache: player URLs are signed
+    // and expire, so a cached resolve loads a dead link. `fresh` (Reload)
+    // additionally forces the server to mint a brand-new session + URL.
+    const res = await api(`/api/embed/${encodeURIComponent(slug)}/${ep}?token=${encodeURIComponent(token)}${fresh ? '&fresh=1' : ''}`, { useCache: false });
     if (!isSafeEmbed(res.url)) throw new Error('Unsafe stream target blocked by security guard.');
 
-    frame.setAttribute('sandbox', res.sandbox || 'allow-scripts allow-same-origin allow-presentation allow-forms');
+    frame.setAttribute('sandbox', res.sandbox || 'allow-scripts allow-same-origin allow-presentation allow-forms allow-orientation-lock allow-popups allow-popups-to-escape-sandbox allow-downloads allow-storage-access-by-user-activation');
+    watchPlayerFrame(frame);
+    state.watch.embedUrl = res.url;
+    if ($('#openInTabBtn')) $('#openInTabBtn').hidden = false;
     frame.src = res.url;
     frame.hidden = false;
     if (stateEl) stateEl.hidden = true;
 
     if ($('#watchEpisodeHint')) {
-      $('#watchEpisodeHint').textContent = `Streaming via ${serverMeta.host} (${serverMeta.quality} · ${serverMeta.version}). Enjoy the episode!`;
+      $('#watchEpisodeHint').textContent = res.warning === 'challenge'
+        ? `This server (${serverMeta.host}) shows an automatic bot check that usually stalls inside the player — use "Open in Tab ↗" above, or pick another server.`
+        : `Streaming via ${serverMeta.host} (${serverMeta.quality} · ${serverMeta.version}). Enjoy the episode!`;
     }
   } catch (err) {
     if (stateEl) stateEl.hidden = false;
@@ -1421,8 +1468,20 @@ function setupGlobalEvents() {
     reloadBtn.addEventListener('click', () => {
       if (!state.watch || !state.watch.activeToken) return;
       const meta = (state.watch.servers || []).find((s) => s.token === state.watch.activeToken);
-      loadStreamEmbed(state.watch.activeToken, meta);
+      loadStreamEmbed(state.watch.activeToken, meta, { fresh: true });
       toast('Reloading player stream…');
+    });
+  }
+
+  // Open in new tab — the reliable path for hosts behind an anti-bot check,
+  // since a top-level document is not cross-origin-framed and the challenge
+  // can complete normally.
+  const openTabBtn = $('#openInTabBtn');
+  if (openTabBtn) {
+    openTabBtn.addEventListener('click', () => {
+      const u = state.watch && state.watch.embedUrl;
+      if (!u || !isSafeEmbed(u)) return;
+      window.open(u, '_blank', 'noopener,noreferrer');
     });
   }
 
