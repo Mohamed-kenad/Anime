@@ -560,6 +560,41 @@ async function handleRequest(req, res) {
         return sendData(req, res, 200, { ok: true, timestamp: Date.now(), cachedItems: store.size, path: p });
       }
 
+      /* Diagnostic: reveals what the upstream actually returns from this platform
+         (status, CDN headers, challenge page) plus this function's egress IP. */
+      if (p === '/api/probe') {
+        const attempts = [
+          { name: 'browser UA', headers: { 'user-agent': UA, accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8' } },
+          { name: 'no UA', headers: {} },
+          { name: 'curl UA', headers: { 'user-agent': 'curl/8.4.0' } }
+        ];
+        const results = [];
+        for (const a of attempts) {
+          try {
+            const r = await fetch(BASE + '/', { headers: a.headers, redirect: 'manual', signal: AbortSignal.timeout(20000) });
+            const body = await r.text();
+            results.push({
+              name: a.name,
+              status: r.status,
+              server: r.headers.get('server'),
+              cfRay: r.headers.get('cf-ray'),
+              cfMitigated: r.headers.get('cf-mitigated'),
+              contentType: r.headers.get('content-type'),
+              title: (body.match(/<title[^>]*>([^<]*)/i) || [])[1] || null,
+              bodyHead: body.replace(/\s+/g, ' ').slice(0, 260)
+            });
+          } catch (e) {
+            results.push({ name: a.name, error: e.message });
+          }
+        }
+        let egressIp = null;
+        try {
+          const ipRes = await fetch('https://api.ipify.org?format=json', { signal: AbortSignal.timeout(10000) });
+          egressIp = (await ipRes.json()).ip;
+        } catch { /* non-fatal */ }
+        return sendData(req, res, 200, { base: BASE, node: process.version, egressIp, results }, 'application/json; charset=utf-8', 'no-store');
+      }
+
       if (p === '/api/home') {
         return sendData(req, res, 200, await apiHome(), 'application/json; charset=utf-8', 'public, max-age=60');
       }
