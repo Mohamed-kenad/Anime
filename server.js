@@ -16,9 +16,12 @@ const zlib = require('zlib');
 const crypto = require('crypto');
 
 const PORT = Number(process.env.PORT) || Number(process.argv[2]) || 3000;
-const BASE = 'https://witanime.site';
+const BASE = (process.env.UPSTREAM_BASE || 'https://witanime.site').replace(/\/+$/, '');
+const IMAGE_BASE = (process.env.UPSTREAM_IMAGES || 'https://images.witanime.site').replace(/\/+$/, '');
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 const ROOT = fs.existsSync(path.join(__dirname, 'public')) ? path.join(__dirname, 'public') : __dirname;
+/* Upstream hostname as a regex-safe fragment, so the HTML scrapers follow UPSTREAM_BASE. */
+const HOST_RX = new URL(BASE).hostname.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 const TTL = {
   home: 3 * 60e3,       // 3 min
   search: 5 * 60e3,     // 5 min
@@ -121,7 +124,7 @@ function absUrl(u) {
 /* Extract anime/episode cards from HTML chunks */
 function parseCards(html) {
   const out = [];
-  const re = /<a\b([^>]*href="([^"]*witanime\.site\/(watch|anime|movie)\/([^"]+))"[^>]*)>([\s\S]*?)<\/a>/g;
+  const re = new RegExp(`<a\\b([^>]*href="([^"]*${HOST_RX}\\/(watch|anime|movie)\\/([^"]+))"[^>]*)>([\\s\\S]*?)<\\/a>`, 'g');
   let m;
   while ((m = re.exec(html))) {
     const openTag = m[1];
@@ -181,7 +184,7 @@ function parseHero(html) {
     if (hEnd < 0) continue;
     const hTag = after.slice(hIdx, hEnd);
     const titleAttr = (hTag.match(/title="([^"]+)"/) || [])[1];
-    const link = hTag.match(/href="(https?:\/\/witanime\.site\/(anime|movie|watch)\/([^"]+))"/);
+    const link = hTag.match(new RegExp(`href="(https?:\\/\\/${HOST_RX}\\/(anime|movie|watch)\\/([^"]+))"`));
     if (!titleAttr || !link) continue;
     const tail = after.slice(hEnd + 5, hEnd + 5200);
     const meta = stripTags((tail.match(/<div[^>]*text-neutral-300[^>]*>([\s\S]*?)<\/div>/) || [])[1]);
@@ -271,7 +274,7 @@ function parseJsonLd(html) {
 function parseEpisodes(html, slug) {
   const out = [];
   const seen = new Set();
-  const re = /<a\b[^>]*href="([^"]*witanime\.site\/watch\/([^"/]+)\/(\d+))"[^>]*>([\s\S]*?)<\/a>/g;
+  const re = new RegExp(`<a\\b[^>]*href="([^"]*${HOST_RX}\\/watch\\/([^"/]+)\\/(\\d+))"[^>]*>([\\s\\S]*?)<\\/a>`, 'g');
   let m;
   while ((m = re.exec(html))) {
     const watchSlug = m[2];
@@ -628,7 +631,7 @@ async function handleRequest(req, res) {
 
       if (p === '/api/image') {
         const imgUrl = u.searchParams.get('url') || '';
-        if (!imgUrl.startsWith('https://images.witanime.site/')) {
+        if (!imgUrl.startsWith(IMAGE_BASE + '/')) {
           return sendData(req, res, 400, { error: 'Invalid image URL' });
         }
         const cacheKey = 'img:' + imgUrl;
