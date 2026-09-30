@@ -2907,3 +2907,172 @@ input, button, select {
   .server-list { grid-template-columns: 1fr 1fr; }
   .episode-number { width: 28px; height: 28px; font-size: 12px; }
 }
+
+/* =========================================================================
+   Video player control bar (ul.bar) + play overlay — responsive
+   ========================================================================= */
+
+ul.bar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+  margin: 0;
+  padding: 8px max(10px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left));
+  list-style: none;
+}
+ul.bar > li {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-width: 0;
+}
+ul.bar li.timing { margin: 0 auto; }
+.video-timing {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.bar .wrapper {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.bar .v-btn,
+.bar .speed-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.bar .v-btn > i,
+.bar .speed-btn > i { pointer-events: none; }
+
+.bar .tooltip { white-space: nowrap; }
+
+.bar .context-menu {
+  z-index: 90;
+  max-width: calc(100vw - 24px);
+}
+
+.play-video-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: clamp(56px, 14vw, 76px);
+  height: clamp(56px, 14vw, 76px);
+  border: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.play-video-button > i { pointer-events: none; }
+
+/* Touch devices have no hover, so tooltips only get in the way */
+@media (hover: none), (pointer: coarse) {
+  .bar .tooltip { display: none !important; }
+}
+
+@media (max-width: 768px) {
+  ul.bar { gap: 4px 6px; }
+
+  /* Tap targets need to be ~44px to be comfortably tappable */
+  .bar .v-btn,
+  .bar .speed-btn {
+    width: 42px;
+    height: 42px;
+  }
+
+  /* Tooltips are hover-only on desktop */
+  .bar .tooltip { display: none !important; }
+
+  /* Keep the volume slider, but let it shrink so the bar never overflows */
+  .bar .vol-wrapper .video-vol-range {
+    flex: 0 1 auto;
+    min-width: 60px;
+    max-width: 110px;
+  }
+
+  /* Menus become bottom sheets so they never clip off-screen */
+  .bar .context-menu {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    top: auto;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    width: auto;
+    max-width: none;
+    max-height: min(62vh, 420px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    transform: none;
+  }
+
+  /* Speed menu: preset buttons wrap into a tappable grid */
+  .bar .speed-slider .body { gap: 8px; }
+  .bar .speed-slider .slider { flex: 1 1 auto; min-width: 0; }
+  .bar .inline-btns {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .bar .inline-btns button {
+    flex: 1 1 0;
+    min-width: 46px;
+    min-height: 40px;
+    padding: 9px 4px;
+    font-size: 13px;
+  }
+
+  /* Settings menu: rows stack so each slider gets the full width */
+  .bar .settings-wrapper {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 8px;
+    width: 100%;
+  }
+  .bar .settings-wrapper > span:first-child { font-size: 13px; }
+  .bar .settings-range { width: 100%; }
+  .bar .settings-range .value { min-width: 24px; text-align: center; }
+  .bar .reset-all {
+    width: 100%;
+    min-height: 42px;
+    padding: 10px;
+  }
+
+  .play-video-button {
+    width: clamp(62px, 18vw, 84px);
+    height: clamp(62px, 18vw, 84px);
+  }
+}
+
+@media (max-width: 440px) {
+  ul.bar { gap: 2px 4px; padding-left: 6px; padding-right: 6px; }
+
+  .bar .v-btn,
+  .bar .speed-btn { width: 40px; height: 40px; }
+
+  /* On the narrowest screens the mute button alone is enough */
+  .bar .vol-wrapper .video-vol-range { display: none; }
+
+  .video-timing { font-size: 12px; }
+
+  .bar .inline-btns button { min-width: 42px; font-size: 12.5px; }
+
+  .play-video-button {
+    width: clamp(60px, 20vw, 78px);
+    height: clamp(60px, 20vw, 78px);
+  }
+}
