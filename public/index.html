@@ -13,9 +13,9 @@
   <!-- Favicon -->
   <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23ff2d55'%3E%3Cpath d='M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5'/%3E%3C/svg%3E">
 
-  <!-- Self-hosted fonts (no third-party round trips) -->
-  <link rel="preload" href="/fonts/outfit-sub1.woff2?v=1" as="font" type="font/woff2" crossorigin>
-  <link rel="preload" href="/fonts/jakarta-sub5.woff2?v=1" as="font" type="font/woff2" crossorigin>
+  <!-- Self-hosted fonts (no third-party round trips). Subsets load from
+       fonts.css on demand — preloading the latin slices only produced
+       "preloaded but not used" warnings on this mostly-Arabic UI. -->
   <link rel="stylesheet" href="/fonts.css?v=1">
 
   <!-- Poster CDN (upstream artwork) -->
