@@ -1,0 +1,163 @@
+/* =========================================================================
+   AnimeWit upstream relay — Cloudflare Worker.
+
+   Why: witanime.site sits behind a Cloudflare managed challenge that rejects
+   datacenter egress (Vercel functions get 403 "Just a moment..." for every
+   request, so the site could neither load pages nor run the POSTs the player
+   needs). A Worker runs on Cloudflare's own network, which the origin does not
+   challenge — so this tiny proxy carries our traffic end to end, including the
+   session cookies and CSRF headers the player flow depends on.
+
+   Deploy (either way):
+     a) wrangler:  npx wrangler@latest deploy --config worker/wrangler.jsonc
+     b) dashboard: Cloudflare → Workers → Create → paste this file → Deploy
+   Then point the app at it: set Vercel env UPSTREAM_RELAY=https://<name>.<account>.workers.dev
+
+   Security: only allow-listed hosts may be fetched (never an open proxy), and
+   an optional shared secret can be required with the RELAY_TOKEN var + the
+   app's UPSTREAM_RELAY_TOKEN env. Extra hosts can be opened with ALLOW_HOSTS
+   (comma separated) to match a non-default UPSTREAM_BASE.
+   ========================================================================= */
+
+const DEFAULT_ALLOW = ['witanime.site', 'images.witanime.site'];
+const MAX_REDIRECTS = 5;
+
+/* Hop-by-hop / connection-scoped headers must never be forwarded. */
+const STRIP = new Set([
+  'host', 'connection', 'keep-alive', 'transfer-encoding', 'upgrade', 'te', 'trailer',
+  'content-length', 'accept-encoding',
+  'cf-connecting-ip', 'cf-ipcountry', 'cf-ray', 'cf-visitor', 'cf-worker', 'cf-ew-via',
+  'x-forwarded-for', 'x-forwarded-proto', 'x-real-ip', 'forwarded'
+]);
+
+const ALLOWED_METHODS = new Set(['GET', 'HEAD', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS']);
+
+function allowList(env) {
+  const extra = String(env.ALLOW_HOSTS || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean);
+  return [...new Set([...DEFAULT_ALLOW, ...extra])];
+}
+
+function isAllowed(u, list) {
+  if (!u || u.protocol !== 'https:') return false;
+  const h = u.hostname.toLowerCase();
+  return list.some((x) => h === x || h.endsWith('.' + x));
+}
+
+/* Target comes either as ?url=<encoded> or as the absolute URL in the path
+   (https://relay.dev/https://witanime.site/search?q=x). */
+function targetOf(request) {
+  const u = new URL(request.url);
+  const q = u.searchParams.get('url');
+  if (q) {
+    try { return new URL(q.includes('://') ? q : 'https://' + q); } catch { return null; }
+  }
+  const rest = u.pathname.slice(1) + u.search;
+  if (rest.startsWith('https://') || rest.startsWith('http://')) {
+    try { return new URL(rest); } catch { return null; }
+  }
+  return null;
+}
+
+function json(status, payload, extraHeaders) {
+  const headers = new Headers({ 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+  if (extraHeaders) for (const [k, v] of extraHeaders) headers.set(k, v);
+  return new Response(JSON.stringify(payload), { status, headers });
+}
+
+async function relay(request, env) {
+  const url = new URL(request.url);
+  const list = allowList(env);
+
+  if (request.method === 'OPTIONS' && !targetOf(request)) {
+    return new Response(null, {
+      status: 204,
+      headers: {
+        'access-control-allow-origin': '*',
+        'access-control-allow-methods': 'GET, HEAD, POST, OPTIONS',
+        'access-control-allow-headers': '*',
+        'access-control-max-age': '86400'
+      }
+    });
+  }
+
+  if (url.pathname === '/' && !url.searchParams.has('url') && !targetOf(request)) {
+    return json(200, { ok: true, service: 'animewit-relay', allow: list, auth: !!env.RELAY_TOKEN });
+  }
+
+  const target = targetOf(request);
+  if (!target) return json(400, { error: 'Missing target URL — use /?url=<encoded url> or /<absolute url>' });
+  if (!isAllowed(target, list)) return json(403, { error: 'Target host not allowed', host: target.hostname });
+
+  if (env.RELAY_TOKEN && request.headers.get('x-relay-token') !== env.RELAY_TOKEN) {
+    return json(401, { error: 'Missing or wrong x-relay-token' });
+  }
+
+  const method = ALLOWED_METHODS.has(request.method) ? request.method : 'GET';
+  const manual = request.headers.get('x-relay-redirect') === 'manual';
+  const hasBody = method !== 'GET' && method !== 'HEAD' && method !== 'OPTIONS';
+  const body = hasBody ? await request.arrayBuffer() : null;
+
+  const headers = new Headers();
+  for (const [k, v] of request.headers) {
+    const l = k.toLowerCase();
+    if (STRIP.has(l) || l === 'x-relay-token' || l === 'x-relay-redirect') continue;
+    headers.append(k, v);
+  }
+  /* Ask for identity so the bytes we hand back need no re-encoding handling. */
+  headers.set('accept-encoding', 'identity');
+
+  const cookies = [];
+  let current = target;
+  let res = null;
+
+  for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+    res = await fetch(current, {
+      method,
+      headers,
+      body,
+      redirect: 'manual',
+      signal: AbortSignal.timeout(30000)
+    });
+
+    const setCookies = typeof res.headers.getSetCookie === 'function' ? res.headers.getSetCookie() : [];
+    for (const c of setCookies) cookies.push(c);
+
+    const loc = res.headers.get('location');
+    const isRedirect = res.status >= 300 && res.status < 400 && loc;
+    if (!isRedirect || manual) break;
+
+    await res.arrayBuffer().catch(() => null);
+    let next;
+    try { next = new URL(loc, current); } catch { return json(502, { error: 'Bad redirect from upstream', location: loc }); }
+    if (!isAllowed(next, list)) return json(403, { error: 'Redirect target not allowed', host: next.hostname });
+    current = next;
+    if (hop === MAX_REDIRECTS) break;
+  }
+
+  const out = new Headers();
+  res.headers.forEach((v, k) => {
+    const l = k.toLowerCase();
+    if (l === 'set-cookie' || l === 'content-length' || l === 'content-encoding' || l === 'transfer-encoding') return;
+    out.append(k, v);
+  });
+  for (const c of cookies) out.append('set-cookie', c);
+  out.set('access-control-allow-origin', '*');
+
+  const payload = method === 'HEAD' ? null : await res.arrayBuffer();
+  if (payload) out.set('content-length', String(payload.byteLength));
+
+  return new Response(payload, { status: res.status, statusText: res.statusText, headers: out });
+}
+
+export default {
+  async fetch(request, env) {
+    try {
+      return await relay(request, env);
+    } catch (err) {
+      return json(502, { error: 'Relay failure', message: String((err && err.message) || err) });
+    }
+  }
+};

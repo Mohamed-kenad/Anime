@@ -95,7 +95,17 @@ async function api(path, { useCache = true } = {}) {
   if (useCache && apiCache.has(path)) {
     return apiCache.get(path);
   }
-  const res = await fetch(path, { headers: { accept: 'application/json' } });
+  /* One retry: upstream hiccups (relay hop, cold function) come back as 5xx or
+     a dropped socket, and a single failure used to blank the whole page. */
+  let res = null;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      res = await fetch(path, { headers: { accept: 'application/json' } });
+      if (res.ok || res.status < 500) break;
+    } catch { res = null; }
+    if (attempt === 0) await new Promise((r) => setTimeout(r, 1200));
+  }
+  if (!res) throw new Error('Network error — could not reach the server');
   const data = await res.json().catch(() => ({}));
   if (!res.ok) {
     const raw = (data && data.error) || data;
