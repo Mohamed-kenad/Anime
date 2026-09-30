@@ -1,6 +1,6 @@
 # AnimeWit
 
-> Fast anime streaming catalog and in-site player backed by animezid.cam.
+> Fast anime streaming catalog and in-site player backed by witanime.site.
 
 ## Browse
 
@@ -19,4 +19,4 @@
 
 ## Sources
 
-- [Upstream catalog](https://animezid.cam)
+- [Upstream catalog](https://witanime.site)

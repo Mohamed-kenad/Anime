@@ -1,6 +1,6 @@
 /**
  * AnimeWit — High-Performance Anime Streaming Client Application
- * Backed by the animezid.cam catalog proxy
+ * Backed by the witanime.site catalog proxy
  */
 
 'use strict';
@@ -52,6 +52,10 @@ const weservUrl = (url, w, q) => {
   try {
     const u = new URL(String(url));
     if (u.protocol !== 'https:') return String(url);
+    // witanime art: weserv can't reach that origin (404) and the image CDN
+    // 403s localhost referers — serve same-origin through our proxy instead
+    // (fetches direct with a witanime referer, immutable cache).
+    if (u.hostname === 'images.witanime.site') return '/api/image?url=' + encodeURIComponent(u.href);
     return 'https://images.weserv.nl/?url=' + encodeURIComponent(u.host + u.pathname)
       + `&w=${w}&q=${q}` + (WEBP_OK ? '&output=webp' : '');
   } catch { return String(url); }
@@ -125,7 +129,8 @@ function toast(msg, type = '') {
 const STORAGE_KEYS = {
   BOOKMARKS: 'animewit_bookmarks_v1',
   HISTORY: 'animewit_history_v1',
-  AUTO_NEXT: 'animewit_autonext'
+  AUTO_NEXT: 'animewit_autonext',
+  BLOCK_POPUPS: 'animewit_blockpopups_v1'
 };
 
 const Storage = {
@@ -219,6 +224,9 @@ const state = {
 /* View Switcher */
 const VIEWS = ['home', 'browse', 'anime', 'watch'];
 function showView(targetView) {
+  if (targetView !== 'watch') {
+    destroyHls();
+  }
   VIEWS.forEach((v) => {
     const el = $('#' + v + (v === 'home' ? 'View' : 'Section'));
     if (el) el.hidden = v !== targetView;
@@ -345,6 +353,32 @@ function cardHtml(item) {
         <svg width="15" height="15" viewBox="0 0 24 24" fill="${isSaved ? 'currentColor' : 'none'}" stroke="currentColor" stroke-width="2"><path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/></svg>
       </button>
     </article>
+  `;
+}
+
+/* Related-rail card — clone of the ristoanime.me MovieItem markup */
+function relatedCardHtml(item) {
+  const raw = item.poster || item.banner || '';
+  const img = imgProxy(cardImg(raw) || POSTER_PLACEHOLDER);
+  const href = `/${item.kind || 'anime'}/${item.slug}`;
+  const category = item.type || (item.kind === 'movie' ? 'Movie' : 'TV Series');
+  const title = item.title || '';
+  const starSvg = '<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2l2.9 6.3 6.9.8-5.1 4.7 1.4 6.8L12 17.2 5.9 20.6l1.4-6.8L2.2 9.1l6.9-.8z"/></svg>';
+  const playSvg = '<svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>';
+
+  return `
+    <div class="MovieItem">
+      <a class="mi-link" href="${esc(href)}" title="${esc(title)}">
+        <span class="mi-poster" style="background-image:url('${esc(img)}')"></span>
+        <span class="mi-over"></span>
+        <span class="mi-category">${esc(category)}</span>
+        ${item.rating ? `<span class="mi-release">${starSvg} ${esc(String(item.rating))}</span>` : ''}
+        ${item.audio ? `<span class="mi-ribbon">${esc(item.audio)}</span>` : ''}
+        ${item.year ? `<div class="mi-episode"><span>Year</span><em>${esc(String(item.year))}</em></div>` : ''}
+        <span class="mi-play">${playSvg}</span>
+        <div class="mi-title"><h4>${esc(title)}</h4></div>
+      </a>
+    </div>
   `;
 }
 
@@ -518,8 +552,10 @@ function renderHeroSlide(idx) {
 
   // Meta parsing
   if ($('#heroRating')) {
-    const rMatch = (item.meta || '').match(/(\d+\.\d+)/);
-    $('#heroRating').textContent = rMatch ? `★ ${rMatch[1]}` : '★ 8.8';
+    const rMatch = (item.meta || '').match(/★\s*(\d+(?:\.\d+)?)/);
+    const el = $('#heroRating');
+    if (rMatch) { el.textContent = `★ ${rMatch[1]}`; el.style.display = ''; }
+    else el.style.display = 'none';
   }
   if ($('#heroType')) $('#heroType').textContent = item.kind === 'movie' ? 'Movie' : 'TV Series';
   if ($('#heroYear')) {
@@ -573,8 +609,15 @@ function renderHeroSlide(idx) {
 function twoToneTitle(title) {
   const clean = String(title || '').trim();
   if (!clean) return '';
-  const words = clean.split(/\s+/);
-  if (words.length < 2) return esc(clean);
+  const maxLength = 36;
+  let truncated = clean.length > maxLength ? clean.substring(0, maxLength).trim() : clean;
+  // Truncate at last space to avoid cutting words
+  if (clean.length > maxLength) {
+    const lastSpace = truncated.lastIndexOf(' ');
+    if (lastSpace > 0) truncated = truncated.substring(0, lastSpace).trim();
+  }
+  const words = truncated.split(/\s+/);
+  if (words.length < 2) return esc(truncated);
   const last = words.pop();
   return esc(words.join(' ')) + ' <span class="accent-word">' + esc(last) + '</span>';
 }
@@ -801,7 +844,11 @@ async function openDetail(slug, kind) {
   }
 
   if ($('#animePageType')) $('#animePageType').textContent = data.kind === 'movie' ? 'Movie' : 'TV Series';
-  if ($('#animePageRating')) $('#animePageRating').textContent = '★ HD';
+  if ($('#animePageRating')) {
+    const badge = $('#animePageRating');
+    if (data.rating) { badge.textContent = `★ ${data.rating}`; badge.style.display = ''; }
+    else badge.style.display = 'none';
+  }
 
   const metaBits = [data.year, data.studio, data.country, data.episodes ? `${data.episodes.length} episodes` : null].filter(Boolean);
   if ($('#animePageMeta')) $('#animePageMeta').textContent = metaBits.join(' · ');
@@ -815,7 +862,7 @@ async function openDetail(slug, kind) {
   }
 
   if ($('#animePageSource')) {
-    $('#animePageSource').href = data.url || 'https://animezid.cam';
+    $('#animePageSource').href = data.url || 'https://witanime.site';
   }
 
   // Detail Bookmark button
@@ -858,7 +905,30 @@ async function openDetail(slug, kind) {
     if (btnLatest) btnLatest.disabled = true;
   }
 
+  // Related / recommended (parsed from the upstream detail page rails)
+  const related = data.related || [];
+  const relSection = $('#animeRelatedSection');
+  if (relSection) {
+    if (related.length) {
+      const grid = $('#relatedGrid');
+      if (grid) grid.innerHTML = related.map(relatedCardHtml).join('');
+      const pill = $('#relatedCountPill');
+      if (pill) pill.textContent = `${related.length} titles`;
+      relSection.hidden = false;
+    } else {
+      relSection.hidden = true;
+    }
+  }
+
   renderEpisodeExplorer(preview, eps, null, $('#animeRangeTabs'), $('#animeEpisodesMore'));
+
+  // Staggered entrance reveal (CSS: .anime-detail-view.is-entered)
+  const view = $('#animeSection');
+  if (view) {
+    view.classList.remove('is-entered');
+    void view.offsetWidth; // reflow so the animation replays every visit
+    view.classList.add('is-entered');
+  }
 }
 
 /* Episode Explorer with Range Chunks (e.g. 976-1025, 1026-1075) */
@@ -977,7 +1047,7 @@ async function openWatch(slug, ep) {
   const stateEl = $('#playerState');
   if (stateEl) stateEl.hidden = false;
   if ($('#playerStateHeading')) $('#playerStateHeading').textContent = 'Loading Stream Player';
-  if ($('#playerStateText')) $('#playerStateText').textContent = 'Connecting to animezid streaming proxy…';
+    if ($('#playerStateText')) $('#playerStateText').textContent = 'Connecting to witanime streaming proxy…';
   if ($('#playerRetryBtn')) $('#playerRetryBtn').hidden = true;
 
   resetPlayerFrame();
@@ -1121,6 +1191,81 @@ function renderServerChips() {
   `).join('');
 }
 
+/* HLS.js instance for direct stream playback */
+let hlsInstance = null;
+
+function destroyHls() {
+  if (hlsInstance) {
+    hlsInstance.destroy();
+    hlsInstance = null;
+  }
+}
+
+function setupVideoPlayer(streamUrl, type, referrer) {
+  const video = $('#videoPlayer');
+  const frame = $('#playerFrame');
+  const stateEl = $('#playerState');
+  const pipBtn = $('#pipBtn');
+  if (!video) return false;
+
+  destroyHls();
+
+  // Hide iframe, show video
+  if (frame) frame.hidden = true;
+  video.hidden = false;
+  if (pipBtn && 'pictureInPictureEnabled' in document) pipBtn.hidden = false;
+
+  if (type === 'hls' || streamUrl.includes('.m3u8')) {
+    if (typeof Hls !== 'undefined' && Hls.isSupported()) {
+      hlsInstance = new Hls({
+        enableWorker: true,
+        lowLatencyMode: true,
+        xhrSetup: (xhr, url) => {
+          if (referrer) xhr.setRequestHeader('Referer', referrer);
+        }
+      });
+      hlsInstance.loadSource(streamUrl);
+      hlsInstance.attachMedia(video);
+      hlsInstance.on(Hls.Events.MANIFEST_PARSED, () => {
+        video.play().catch(() => {});
+      });
+      hlsInstance.on(Hls.Events.ERROR, (event, data) => {
+        if (data.fatal) {
+          console.error('HLS error:', data);
+          if (stateEl) stateEl.hidden = false;
+          if ($('#playerStateHeading')) $('#playerStateHeading').textContent = 'Stream Error';
+          if ($('#playerStateText')) $('#playerStateText').textContent = 'HLS stream failed. Trying fallback…';
+          fallbackToIframe(streamUrl, referrer);
+        }
+      });
+      return true;
+    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
+      // Safari native HLS
+      video.src = streamUrl;
+      video.addEventListener('loadedmetadata', () => video.play().catch(() => {}), { once: true });
+      return true;
+    }
+  } else if (type === 'mp4' || streamUrl.includes('.mp4')) {
+    video.src = streamUrl;
+    video.play().catch(() => {});
+    return true;
+  }
+  return false;
+}
+
+function fallbackToIframe(embedUrl, referrer) {
+  const video = $('#videoPlayer');
+  const frame = $('#playerFrame');
+  const pipBtn = $('#pipBtn');
+  if (video) video.hidden = true;
+  if (pipBtn) pipBtn.hidden = true;
+  if (frame) {
+    frame.src = embedUrl;
+    frame.hidden = false;
+  }
+  destroyHls();
+}
+
 function resetPlayerFrame() {
   const old = $('#playerFrame');
   const frame = document.createElement('iframe');
@@ -1128,6 +1273,7 @@ function resetPlayerFrame() {
   frame.title = 'AnimeWit Player';
   frame.setAttribute('allow', 'autoplay; fullscreen; encrypted-media; picture-in-picture; storage-access');
   frame.setAttribute('referrerpolicy', 'no-referrer');
+  frame.setAttribute('sandbox', 'allow-scripts allow-same-origin allow-presentation allow-forms allow-orientation-lock allow-popups allow-popups-to-escape-sandbox allow-downloads allow-storage-access-by-user-activation');
   frame.allowFullscreen = true;
   frame.hidden = true;
   if (old) old.replaceWith(frame);
@@ -1174,6 +1320,23 @@ function watchPlayerFrame(frame) {
   return () => clearTimeout(timer);
 }
 
+/* Popup blocker: strips popup permissions from the player sandbox so host
+   popunders (the ad tabs you find after PiP) can never open. Takes effect on
+   stream (re)load, since sandbox tokens apply at navigation time. */
+const strictSandbox = (sb) => String(sb || '')
+  .replace(/\s*allow-popups-to-escape-sandbox/g, '')
+  .replace(/\s*allow-popups(?=\s|$)/g, '')
+  .replace(/\s+/g, ' ').trim();
+const isBlockPopups = () => {
+  // Default ON: first-time visitors get popunder ads blocked without having
+  // to find the toggle. Only an explicit opt-out ('0') re-enables popups.
+  try { return localStorage.getItem(STORAGE_KEYS.BLOCK_POPUPS) !== '0'; } catch { return true; }
+};
+const syncBlockPopupsBtn = () => {
+  const b = $('#blockPopupsBtn');
+  if (b) b.classList.toggle('active', isBlockPopups());
+};
+
 function isSafeEmbed(u) {
   try {
     const x = new URL(u, location.href);
@@ -1193,7 +1356,7 @@ async function loadStreamEmbed(token, serverMeta, { fresh = false } = {}) {
   if (stateEl) stateEl.hidden = false;
 
   if ($('#playerStateHeading')) $('#playerStateHeading').textContent = `Loading ${serverMeta ? serverMeta.host : 'Server'}`;
-  if ($('#playerStateText')) $('#playerStateText').textContent = 'Resolving streaming gateway…';
+  if ($('#playerStateText')) $('#playerStateText').textContent = 'Resolving direct stream…';
 
   state.watch.activeToken = token;
   $$('.server-chip').forEach((c) => c.classList.toggle('active', c.dataset.token === token));
@@ -1201,18 +1364,38 @@ async function loadStreamEmbed(token, serverMeta, { fresh = false } = {}) {
   const frame = resetPlayerFrame();
 
   try {
-    // Never serve embeds from the client memory cache: player URLs are signed
-    // and expire, so a cached resolve loads a dead link. `fresh` (Reload)
-    // additionally forces the server to mint a brand-new session + URL.
+    // Try to extract direct stream URL (ad-free)
+    const res = await api(`/api/stream/${encodeURIComponent(slug)}/${ep}?token=${encodeURIComponent(token)}${fresh ? '&fresh=1' : ''}`, { useCache: false });
+    if (res.streamUrl && setupVideoPlayer(res.streamUrl, res.type, res.referrer)) {
+      state.watch.embedUrl = res.streamUrl;
+      if ($('#openInTabBtn')) $('#openInTabBtn').hidden = false;
+      if (stateEl) stateEl.hidden = true;
+      if ($('#watchEpisodeHint')) {
+        $('#watchEpisodeHint').textContent = `Direct stream via ${serverMeta.host} (${serverMeta.quality} · ${serverMeta.version}) — no ads.`;
+      }
+      return;
+    }
+  } catch (streamErr) {
+    console.warn('Direct stream extraction failed, falling back to embed:', streamErr);
+  }
+
+  // Fallback to iframe embed
+  try {
+    if ($('#playerStateText')) $('#playerStateText').textContent = 'Loading embed player…';
     const res = await api(`/api/embed/${encodeURIComponent(slug)}/${ep}?token=${encodeURIComponent(token)}${fresh ? '&fresh=1' : ''}`, { useCache: false });
     if (!isSafeEmbed(res.url)) throw new Error('Unsafe stream target blocked by security guard.');
 
-    frame.setAttribute('sandbox', res.sandbox || 'allow-scripts allow-same-origin allow-presentation allow-forms allow-orientation-lock allow-popups allow-popups-to-escape-sandbox allow-downloads allow-storage-access-by-user-activation');
+    const sb = isBlockPopups() ? strictSandbox(res.sandbox) : res.sandbox;
+    frame.setAttribute('sandbox', sb || 'allow-scripts allow-same-origin allow-presentation allow-forms allow-orientation-lock allow-downloads allow-storage-access-by-user-activation');
     watchPlayerFrame(frame);
     state.watch.embedUrl = res.url;
     if ($('#openInTabBtn')) $('#openInTabBtn').hidden = false;
     frame.src = res.url;
     frame.hidden = false;
+    const video = $('#videoPlayer');
+    const pipBtn = $('#pipBtn');
+    if (video) video.hidden = true;
+    if (pipBtn) pipBtn.hidden = true;
     if (stateEl) stateEl.hidden = true;
 
     if ($('#watchEpisodeHint')) {
@@ -1260,6 +1443,14 @@ function setupGlobalEvents() {
       if (opened && section) {
         section.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }
+      return;
+    }
+
+    // Related-rail MovieItem navigation (SPA, no full reload)
+    const relLink = e.target.closest('.related-grid .mi-link');
+    if (relLink && !e.metaKey && !e.ctrlKey && !e.shiftKey && !e.altKey) {
+      e.preventDefault();
+      go(relLink.getAttribute('href'));
       return;
     }
 
@@ -1439,19 +1630,6 @@ function setupGlobalEvents() {
     };
     document.addEventListener('fullscreenchange', onFsChange);
     document.addEventListener('webkitfullscreenchange', onFsChange);
-
-    // MEGA's embed is not responsive: flag it once so the user knows why.
-    let megaHinted = false;
-    const warnIfMega = () => {
-      if (megaHinted || !state.watch) return;
-      const active = (state.watch.servers || []).find((s) => s.token === state.watch.activeToken);
-      if (!active || !/^mega/i.test(active.host || '')) return;
-      megaHinted = true;
-      if (window.matchMedia('(max-width: 900px)').matches) {
-        toast('This server\'s player is not mobile-friendly — tap Fullscreen, or pick another server', 'error');
-      }
-    };
-    setInterval(warnIfMega, 1200);
   }
 
   // Fullscreen hotkey
@@ -1485,6 +1663,26 @@ function setupGlobalEvents() {
     });
   }
 
+  // Popup blocker toggle — persists, then reloads the stream fresh so the new
+  // sandbox tokens apply (they only take effect at navigation time).
+  syncBlockPopupsBtn();
+  const blockBtn = $('#blockPopupsBtn');
+  if (blockBtn) {
+    blockBtn.addEventListener('click', () => {
+      let on = false;
+      try {
+        on = !isBlockPopups();
+        localStorage.setItem(STORAGE_KEYS.BLOCK_POPUPS, on ? '1' : '0');
+      } catch { /* private mode: apply for this session only */ on = !isBlockPopups(); }
+      syncBlockPopupsBtn();
+      toast(on ? 'Popup tabs blocked — reloading stream…' : 'Popup tabs allowed — reloading stream…');
+      if (state.watch && state.watch.activeToken) {
+        const meta = (state.watch.servers || []).find((s) => s.token === state.watch.activeToken);
+        loadStreamEmbed(state.watch.activeToken, meta, { fresh: true });
+      }
+    });
+  }
+
   // Theater Mode toggle
   const theaterBtn = $('#btnTheaterMode');
   if (theaterBtn) {
@@ -1494,6 +1692,29 @@ function setupGlobalEvents() {
       if (watchSec) watchSec.classList.toggle('theater-mode', state.theaterMode);
       theaterBtn.querySelector('span').textContent = state.theaterMode ? '⛶ Normal' : '⛶ Theater';
     });
+  }
+
+  // Picture-in-Picture button (for video player)
+  const pipBtn = $('#pipBtn');
+  if (pipBtn) {
+    pipBtn.addEventListener('click', async () => {
+      const video = $('#videoPlayer');
+      if (!video || video.hidden) return;
+      try {
+        if (document.pictureInPictureElement === video) {
+          await document.exitPictureInPicture();
+        } else {
+          await video.requestPictureInPicture();
+        }
+      } catch (e) {
+        console.warn('PiP failed:', e);
+      }
+    });
+    // Show/hide PiP button based on video player visibility and PiP support
+    const video = $('#videoPlayer');
+    if (video && 'pictureInPictureEnabled' in document) {
+      pipBtn.hidden = false;
+    }
   }
 
   // Cinema Mode (Lights Off) toggle

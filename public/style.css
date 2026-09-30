@@ -173,6 +173,12 @@ input, button, select {
   border-color: rgba(255, 255, 255, 0.18);
   transform: translateY(-2px);
 }
+/* Toggled-on state (e.g. popup blocker): accent outline, no lift. */
+.btn-glass.active {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
 .btn-dark {
   background: rgba(10, 10, 16, 0.72);
   border: 1px solid rgba(255, 255, 255, 0.12);
@@ -1636,7 +1642,7 @@ input, button, select {
 .episode-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 10px;
+  gap: 5px;
   max-height: 520px;
   overflow-y: auto;
   padding-right: 4px;
@@ -1645,7 +1651,7 @@ input, button, select {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-sm);
-  padding: 10px 12px;
+  padding: 28px 12px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -1696,6 +1702,487 @@ input, button, select {
 }
 
 /* =========================================================================
+   Info Page Motion — clone of the ristoanime.me single-anime page
+   (entrance reveal, poster particles, ripple bursts, pill hovers)
+   ========================================================================= */
+
+/* ---- Staggered entrance (JS toggles .is-entered after render) ---- */
+@keyframes detailRevealUp {
+  from { opacity: 0; transform: translateY(22px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes detailRevealScale {
+  from { opacity: 0; transform: translateY(16px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+.anime-detail-view.is-entered .detail-breadcrumb { animation: detailRevealUp 0.5s var(--ease) both; }
+.anime-detail-view.is-entered .detail-backdrop { animation: detailRevealScale 0.6s var(--ease) 0.05s both; }
+.anime-detail-view.is-entered .detail-poster-wrap { animation: detailRevealScale 0.6s var(--ease) 0.14s both; }
+.anime-detail-view.is-entered .detail-info > * { animation: detailRevealUp 0.55s var(--ease) both; }
+.anime-detail-view.is-entered .detail-info > *:nth-child(1) { animation-delay: 0.18s; }
+.anime-detail-view.is-entered .detail-info > *:nth-child(2) { animation-delay: 0.24s; }
+.anime-detail-view.is-entered .detail-info > *:nth-child(3) { animation-delay: 0.29s; }
+.anime-detail-view.is-entered .detail-info > *:nth-child(4) { animation-delay: 0.34s; }
+.anime-detail-view.is-entered .detail-info > *:nth-child(5) { animation-delay: 0.39s; }
+.anime-detail-view.is-entered .detail-info > *:nth-child(6) { animation-delay: 0.44s; }
+.anime-detail-view.is-entered .detail-info > *:nth-child(7) { animation-delay: 0.5s; }
+.anime-detail-view.is-entered .episode-browser-section { animation: detailRevealUp 0.6s var(--ease) 0.55s both; }
+.anime-detail-view.is-entered .related-section { animation: detailRevealUp 0.6s var(--ease) 0.62s both; }
+
+/* ---- Floating icons rising off the poster (.PosterAnimate / @keyframes notes) ---- */
+.poster-particles {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  overflow: hidden;
+  pointer-events: none;
+}
+.pp {
+  position: absolute;
+  bottom: 18%;
+  display: flex;
+  opacity: 0;
+  color: rgba(255, 255, 255, 0.55);
+  filter: drop-shadow(0 0 12px rgba(255, 45, 85, 0.6));
+  animation: posterNotes 2.6s linear infinite;
+}
+.pp-1 { left: 10%; animation-delay: 0s; color: rgba(255, 45, 85, 0.7); }
+.pp-2 { left: 30%; animation-delay: 0.9s; }
+.pp-3 { left: 50%; animation-delay: 1.8s; color: rgba(251, 191, 36, 0.75); }
+.pp-4 { left: 68%; animation-delay: 0.5s; }
+.pp-5 { left: 85%; animation-delay: 2.2s; color: rgba(255, 118, 67, 0.7); }
+@keyframes posterNotes {
+  0% { transform: translateY(0) scale(0.6); opacity: 0; }
+  15% { opacity: 0.95; }
+  70% { opacity: 0.5; }
+  100% { transform: translateY(-150px) scale(1.15); opacity: 0; }
+}
+
+/* ---- Poster hover: live version of the reference's dead 0.4s transition ---- */
+.detail-poster-wrap {
+  overflow: hidden;
+  transition: box-shadow 0.4s ease, border-color 0.4s ease;
+}
+.detail-poster {
+  display: block;
+  transition: transform 0.4s ease;
+}
+.detail-poster-wrap:hover {
+  border-color: rgba(255, 45, 85, 0.5);
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.8), 0 0 26px rgba(255, 45, 85, 0.35);
+}
+.detail-poster-wrap:hover .detail-poster {
+  transform: scale(1.05);
+}
+
+/* ---- Ripple burst on the Watch buttons + bookmark (5px dot → scale(80)) ---- */
+.detail-actions .btn,
+.btn-poster-bookmark {
+  position: relative;
+  overflow: hidden;
+}
+.detail-actions .btn::after,
+.btn-poster-bookmark::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.4);
+  transform: translate(-50%, -50%) scale(0);
+  pointer-events: none;
+  transition: 0s;
+}
+.detail-actions .btn:hover::after,
+.btn-poster-bookmark:hover::after {
+  transform: translate(-50%, -50%) scale(80);
+  opacity: 0;
+  transition: 0.9s ease;
+}
+.detail-actions .btn::before,
+.btn-poster-bookmark::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(120deg, transparent 30%, rgba(255, 255, 255, 0.18) 50%, transparent 70%);
+  transform: translateX(-120%);
+  transition: none;
+  pointer-events: none;
+}
+.detail-actions .btn:hover::before,
+.btn-poster-bookmark:hover::before {
+  transform: translateX(120%);
+  transition: transform 0.7s ease;
+}
+
+/* ---- Genre pills flip to accent fill (reference .TaxContent li a:hover) ---- */
+.genre-tag {
+  transition: all 0.35s ease;
+  cursor: default;
+}
+.genre-tag:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 18px rgba(255, 45, 85, 0.35);
+}
+
+/* ---- Golden rating pill with mirror glow (reference .imdbRBox) ---- */
+.anime-detail-view .badge-rating {
+  background: linear-gradient(180deg, #f7d774, #eac13b);
+  color: #17120a;
+  border: 1px solid #f5c518;
+  font-size: 12.5px;
+  padding: 5px 12px;
+  box-shadow: 0 0 18px rgba(234, 193, 59, 0.45);
+  -webkit-box-reflect: below 3px linear-gradient(transparent 50%, rgba(255, 0, 0, 0.12));
+  transition: transform 0.35s ease, box-shadow 0.35s ease;
+}
+.anime-detail-view .badge-rating:hover {
+  transform: translateY(-2px) scale(1.06);
+  box-shadow: 0 0 26px rgba(245, 197, 24, 0.7);
+}
+/* Type/status badges get the same micro-pop for consistency */
+.anime-detail-view .badge-quality,
+.anime-detail-view .badge-status {
+  transition: transform 0.35s ease, filter 0.35s ease;
+}
+.anime-detail-view .badge-quality:hover,
+.anime-detail-view .badge-status:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.25);
+}
+
+/* ---- Burst-fill on range tabs + episode items (reference .filterTabs pattern) ---- */
+.range-tab,
+.episode-item {
+  position: relative;
+  overflow: hidden;
+}
+.range-tab::after,
+.episode-item::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.35);
+  transform: translate(-50%, -50%) scale(0);
+  transition: 0s;
+  pointer-events: none;
+}
+.range-tab:hover::after,
+.episode-item:hover::after {
+  transform: translate(-50%, -50%) scale(70);
+  opacity: 0;
+  transition: 0.8s ease;
+}
+.range-tab.active::after {
+  background: rgba(255, 255, 255, 0.55);
+  transform: translate(-50%, -50%) scale(70);
+  opacity: 0;
+  transition: 1s ease;
+}
+.episode-item .episode-number {
+  transition: background 0.3s ease, transform 0.3s ease;
+}
+.episode-item:hover .episode-number {
+  background: var(--accent);
+  color: #fff;
+  transform: scale(1.08);
+}
+
+/* ---- Section header icon with red glow (reference .titleArea .icon) ---- */
+.related-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+.related-title-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.related-title-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 30%;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: 0 0 19px rgba(255, 45, 85, 0.75);
+  background: #100f18;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  flex-shrink: 0;
+  transition: box-shadow 0.35s ease, transform 0.35s ease;
+}
+.related-title-wrap:hover .related-title-icon {
+  transform: rotate(-8deg) scale(1.06);
+  box-shadow: 0 0 26px rgba(255, 45, 85, 0.95);
+}
+
+/* ---- Related Anime — ristoanime.me MovieItem clone (4-up grid) ---- */
+.related-section {
+  margin-top: 50px;
+}
+.related-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 22px;
+}
+@media (max-width: 1150px) {
+  .related-grid { grid-template-columns: repeat(3, 1fr); }
+}
+@media (max-width: 820px) {
+  .related-grid { grid-template-columns: repeat(2, 1fr); gap: 14px; }
+}
+
+/* Card shell */
+.MovieItem {
+  position: relative;
+  border-radius: 15px;
+  overflow: hidden;
+  background: var(--bg-surface);
+  box-shadow: 0 4px 5px rgba(0, 0, 0, 0.14), 0 1px 15px rgba(0, 0, 0, 0.08),
+    0 5px 10px -1px rgba(0, 0, 0, 0.11);
+  transition: transform 0.4s ease, box-shadow 0.4s ease;
+}
+.MovieItem:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 16px 36px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 45, 85, 0.3);
+}
+.mi-link {
+  display: block;
+  position: relative;
+  padding-bottom: 150%;
+  overflow: hidden;
+  border-radius: inherit;
+}
+/* Poster (background-image, like the reference) + bottom scrim */
+.mi-poster {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  background-size: cover;
+  background-position: center;
+  background-color: var(--bg-card);
+  transition: opacity 0.3s ease;
+}
+.MovieItem:hover .mi-poster {
+  opacity: 0.4;
+}
+.mi-over {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background: linear-gradient(to top, rgba(0, 0, 0, 0.9) 16%, rgba(0, 0, 0, 0) 48%),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.35), rgba(0, 0, 0, 0) 30%);
+}
+/* Red category badge — top right, rockets out on hover */
+.mi-category {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 6;
+  background: #e94f37;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  padding: 5px 12px;
+  border-radius: 7px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+  transition: transform 0.4s ease, opacity 0.4s ease;
+}
+.MovieItem:hover .mi-category {
+  transform: translateX(240px);
+  opacity: 0;
+}
+/* Gold rating pill — under the category, flies up & out on hover */
+.mi-release {
+  position: absolute;
+  top: 52px;
+  right: 12px;
+  z-index: 6;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: linear-gradient(180deg, #ffd95e, #f9cb24);
+  color: #241a00;
+  font-size: 12.5px;
+  font-weight: 900;
+  padding: 5px 11px;
+  border-radius: 7px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.45);
+  transition: transform 0.4s ease, opacity 0.4s ease;
+}
+.MovieItem:hover .mi-release {
+  transform: translateY(-95px);
+  opacity: 0;
+}
+/* Gold ribbon — top-left corner (audio/status) */
+.mi-ribbon {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 6;
+  background: linear-gradient(180deg, #ffd75e, #f5c518);
+  color: #3a2c00;
+  font-size: 11.5px;
+  font-weight: 900;
+  padding: 6px 14px;
+  border-radius: 0 0 12px 0;
+  white-space: nowrap;
+  transition: opacity 0.3s ease;
+}
+.MovieItem:hover .mi-ribbon {
+  opacity: 0;
+}
+/* Bottom pill (year) — center, rockets up & out on hover */
+.mi-episode {
+  position: absolute;
+  left: 50%;
+  bottom: 31%;
+  z-index: 6;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #e94f37;
+  color: #fff;
+  border-radius: 8px;
+  padding: 6px 14px;
+  font-weight: 800;
+  font-size: 13px;
+  white-space: nowrap;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.5);
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+.mi-episode span {
+  font-size: 11.5px;
+  font-weight: 700;
+  opacity: 0.9;
+}
+.mi-episode em {
+  font-style: normal;
+  font-size: 16px;
+  font-weight: 900;
+}
+.MovieItem:hover .mi-episode {
+  transform: translate(-50%, -120px);
+  opacity: 0;
+}
+/* Center play button */
+.mi-play {
+  position: absolute;
+  left: 50%;
+  top: 44%;
+  z-index: 6;
+  width: 54px;
+  height: 54px;
+  border-radius: 50%;
+  background: var(--accent-gradient);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(255, 45, 85, 0.5);
+  opacity: 0;
+  transform: translate(-50%, -50%) scale(0.7);
+  transition: opacity 0.35s ease, transform 0.35s ease;
+}
+.MovieItem:hover .mi-play {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+/* Bottom title block */
+.mi-title {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 7;
+  padding: 42px 14px 18px;
+  background: linear-gradient(to top, #172029 38%, rgba(23, 32, 41, 0) 100%);
+  text-align: center;
+}
+.mi-title h4 {
+  font-size: 14.5px;
+  font-weight: 800;
+  line-height: 1.5;
+  color: #fff;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.mi-title::before {
+  content: "";
+  position: absolute;
+  top: 12px;
+  left: 50%;
+  width: 46px;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--accent);
+  transform: translateX(-50%) scaleX(0);
+  transition: transform 0.35s ease;
+}
+.MovieItem:hover .mi-title::before {
+  transform: translateX(-50%) scaleX(1);
+}
+/* Signature ripple burst flooding the card */
+.mi-link::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: 50%;
+  z-index: 5;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.55);
+  transform: translate(50%, -50%) scale(0);
+  pointer-events: none;
+  transition: 0s;
+}
+.mi-link:hover::after {
+  transform: translate(50%, -50%) scale(110);
+  opacity: 0;
+  transition: 0.5s ease;
+}
+
+/* ---- Mobile ---- */
+@media (max-width: 768px) {
+  .pp-4, .pp-5 { display: none; }
+  .related-grid { gap: 12px; }
+}
+
+/* ---- Honor reduced-motion ---- */
+@media (prefers-reduced-motion: reduce) {
+  .anime-detail-view.is-entered * { animation: none !important; }
+  .poster-particles { display: none; }
+  .detail-actions .btn::after,
+  .detail-actions .btn::before,
+  .btn-poster-bookmark::after,
+  .btn-poster-bookmark::before,
+  .range-tab::after,
+  .episode-item::after,
+  .mi-link::after { display: none !important; }
+}
+
+
+/* =========================================================================
    Watch View / Video Player
    ========================================================================= */
 .watch-view {
@@ -1732,6 +2219,14 @@ input, button, select {
   align-items: start;
   transition: all 0.35s var(--ease);
 }
+/* Grid items default to min-width:auto, so one wide child — the episode range
+   tabs are a non-wrapping flex row that reaches ~2200px on long series —
+   inflates the 1fr track and drags the whole watch page (video player
+   included) far past the viewport on phones. Pin the items to the track and
+   let the sidebar absorb its own overflow, where .sidebar-range-tabs scrolls. */
+.watch-main,
+.episode-sidebar,
+.sidebar-header { min-width: 0; }
 
 /* Theater Mode */
 .watch-view.theater-mode .watch-layout {
@@ -1776,7 +2271,9 @@ input, button, select {
 }
 #playerFrame:fullscreen ~ .player-state,
 .player-glow-wrap:fullscreen,
-.watch-player:fullscreen {
+.player-glow-wrap:-webkit-full-screen,
+.watch-player:fullscreen,
+.watch-player:-webkit-full-screen {
   border-radius: 0;
   width: 100%;
   height: 100%;
@@ -1784,7 +2281,8 @@ input, button, select {
   aspect-ratio: auto;
   background: #000;
 }
-.watch-player:fullscreen #playerFrame {
+.watch-player:fullscreen #playerFrame,
+.watch-player:-webkit-full-screen #playerFrame {
   width: 100%;
   height: 100%;
 }
@@ -1816,6 +2314,18 @@ input, button, select {
   overflow: hidden;
   display: block;
   color-scheme: dark;
+  z-index: 3;
+}
+
+.video-player {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  max-width: 100%;
+  border: none;
+  background: #000;
+  object-fit: contain;
   z-index: 3;
 }
 
@@ -2340,10 +2850,16 @@ input, button, select {
   .watch-player,
   .player-glow-wrap { border-radius: 12px; }
   .player-ambient-glow { display: none; }
-  /* A 16:9 box is too short for a player with a min intrinsic height —
-     give it room so the controls aren't clipped. */
-  .watch-player { aspect-ratio: 4 / 3; }
-  .watch-view.theater-mode .watch-player { aspect-ratio: 4 / 3; max-height: none; }
+  /* Both players letterbox (object-fit: contain) and MEGA sizes its <video>
+     with 100vw/100vh, so a 16:9 box is what keeps the frame full — a 4:3 or
+     portrait box only adds black bars around a video that cannot grow. */
+  .watch-player { aspect-ratio: 16 / 9; }
+  .watch-view.theater-mode .watch-player { aspect-ratio: 16 / 9; max-height: none; }
+  /* The box is only ~200px tall on a phone, so the loading/error overlay
+     has to fit inside it instead of being clipped by the player's overflow. */
+  .player-state { padding: 14px 16px; gap: 8px; }
+  .player-state h3 { font-size: 15px; }
+  .player-state p { font-size: 12px; max-width: none; }
 
   .player-toolbar { padding: 12px; gap: 12px; }
   .player-nav-group,
@@ -2363,7 +2879,7 @@ input, button, select {
 
   .episode-sidebar { padding: 14px; max-height: 60vh; }
   .sidebar-search input { font-size: 16px; height: 40px; }
-  .episode-item { padding: 12px 10px; margin-top: 5px; }
+  .episode-item { padding: 28px 10px; margin-top: 5px; }
 }
 
 @media (max-width: 560px) {
@@ -2377,7 +2893,7 @@ input, button, select {
 
 @media (max-width: 440px) {
   .grid { grid-template-columns: repeat(2, 1fr); gap: 10px; }
-  .card-overlay { padding: 28px 9px 9px; }
+  .card-overlay { padding: 18px 9px 9px; }
   .card-overlay .card-title { font-size: 12px; }
   .card-rating { font-size: 11.5px; }
   .hero-actions .btn { flex: 1 1 auto; }
@@ -2390,11 +2906,4 @@ input, button, select {
   .player-nav-group .btn { font-size: 12.5px; padding: 10px 8px; }
   .server-list { grid-template-columns: 1fr 1fr; }
   .episode-number { width: 28px; height: 28px; font-size: 12px; }
-  .watch-player { aspect-ratio: 3 / 4; }
-}
-
-/* Phones held sideways: go back to 16:9, there's height to spare */
-@media (max-width: 900px) and (orientation: landscape) {
-  .watch-player,
-  .watch-view.theater-mode .watch-player { aspect-ratio: 16 / 9; }
 }
