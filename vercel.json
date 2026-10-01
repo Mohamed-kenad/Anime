@@ -3,7 +3,12 @@
   "functions": {
     "api/*.js": {
       "maxDuration": 60,
-      "includeFiles": "public/*"
+      "memory": 3007,
+      "includeFiles": [
+        "public/*",
+        "node_modules/@sparticuz/chromium/bin/**",
+        "node_modules/@sparticuz/chromium/build/**"
+      ]
     }
   },
   "rewrites": [
