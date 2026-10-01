@@ -22,6 +22,8 @@ concurrency:
 
 env:
   VERCEL_PROJECT: anime-wit10-up-pro
+  VERCEL_PROJECT_ID: prj_WaUEtozFIoXZ1G3RTytRvpVyJKf2
+  VERCEL_ORG_ID: team_MG9smmWr6FuurMNLe5tNcYNY
 
 jobs:
   deploy:
@@ -39,18 +41,21 @@ jobs:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
         run: |
           if [ -z "$VERCEL_TOKEN" ]; then
-            echo "::error::Repository secret VERCEL_TOKEN is missing. Create a token at https://vercel.com/account/tokens then add it under Settings -> Secrets and variables -> Actions."
+            echo "::error::Repository secret VERCEL_TOKEN is missing. Create a token at https://vercel.com/account/tokens (Scope: Full Account) and add it under Settings -> Secrets and variables -> Actions."
             exit 1
           fi
 
-      - name: Create and link Vercel project
-        env:
-          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      # The CLI's team/user lookup fails for this token ("User not found"), so
+      # link the project by writing the known IDs instead of running `vercel link`.
+      - name: Link Vercel project
         run: |
-          # project add fails harmlessly when the project already exists
-          npx --yes vercel@latest project add "$VERCEL_PROJECT" --token "$VERCEL_TOKEN" || true
-          npx --yes vercel@latest link --yes --project "$VERCEL_PROJECT" --token "$VERCEL_TOKEN"
+          mkdir -p .vercel
+          printf '{"projectId":"%s","orgId":"%s"}' "$VERCEL_PROJECT_ID" "$VERCEL_ORG_ID" > .vercel/project.json
+          cat .vercel/project.json
 
+      # Best-effort: new env vars only take effect on the deployment below, so
+      # run this before the deploy. Never fails the job — skip when the secret
+      # is unset, warn on API errors.
       - name: Sync environment variables
         env:
           VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
@@ -58,14 +63,26 @@ jobs:
           UPSTREAM_RELAY_TOKEN: ${{ secrets.UPSTREAM_RELAY_TOKEN }}
           UPSTREAM_JINA_KEY: ${{ secrets.UPSTREAM_JINA_KEY }}
         run: |
-          for name in UPSTREAM_RELAY UPSTREAM_RELAY_TOKEN UPSTREAM_JINA_KEY; do
-            value="${!name:-}"
-            if [ -n "$value" ]; then
-              npx --yes vercel@latest env add "$name" production --value "$value" --force --yes --token "$VERCEL_TOKEN"
-            else
-              echo "Secret $name not set — skipping."
-            fi
-          done
+          node <<'NODE'
+          const names = ['UPSTREAM_RELAY', 'UPSTREAM_RELAY_TOKEN', 'UPSTREAM_JINA_KEY'];
+          (async () => {
+            for (const name of names) {
+              const value = process.env[name];
+              if (!value) { console.log(`${name} not set - skipping.`); continue; }
+              try {
+                const res = await fetch(`https://api.vercel.com/v10/projects/${process.env.VERCEL_PROJECT_ID}/env`, {
+                  method: 'POST',
+                  headers: { authorization: `Bearer ${process.env.VERCEL_TOKEN}`, 'content-type': 'application/json' },
+                  body: JSON.stringify({ key: name, value, target: ['production'], type: 'encrypted' })
+                });
+                if (res.ok || res.status === 409) console.log(`${name} synced (HTTP ${res.status}).`);
+                else console.log(`::warning::${name}: HTTP ${res.status} ${await res.text()}`);
+              } catch (e) {
+                console.log(`::warning::${name}: ${e.message}`);
+              }
+            }
+          })();
+          NODE
 
       - name: Deploy to production
         env:
@@ -83,5 +100,5 @@ jobs:
             echo "Waiting for $url ($i/30)..."
             sleep 5
           done
-          echo "::error::$url never became healthy. Check https://vercel.com — the subdomain $VERCEL_PROJECT may already be taken by another account; if so, use the project's real URL as the ANIMEWIT_API_BASE repository variable."
+          echo "::error::$url never became healthy. Check the deployment at https://vercel.com."
           exit 1

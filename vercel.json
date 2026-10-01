@@ -3,7 +3,7 @@
   "functions": {
     "api/[...path].js": {
       "maxDuration": 60,
-      "memory": 3007,
+      "memory": 2048,
       "includeFiles": "{public/*,node_modules/@sparticuz/chromium/bin/**,node_modules/@sparticuz/chromium/build/**,node_modules/puppeteer-extra-plugin-stealth/**}"
     }
   },
