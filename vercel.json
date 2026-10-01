@@ -4,11 +4,7 @@
     "api/*.js": {
       "maxDuration": 60,
       "memory": 3007,
-      "includeFiles": [
-        "public/*",
-        "node_modules/@sparticuz/chromium/bin/**",
-        "node_modules/@sparticuz/chromium/build/**"
-      ]
+      "includeFiles": "{public/*,node_modules/@sparticuz/chromium/bin/**,node_modules/@sparticuz/chromium/build/**}"
     }
   },
   "rewrites": [
