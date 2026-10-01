@@ -25,8 +25,12 @@ jobs:
       - uses: actions/configure-pages@v5
       - name: Prepare site
         env:
-          API_BASE: ${{ vars.ANIMEWIT_API_BASE || 'https://anime-wit10-up-pro.vercel.app' }}
+          API_BASE: ${{ vars.ANIMEWIT_API_BASE }}
         run: |
+          if [ -z "$API_BASE" ]; then
+            echo "Set the repository Actions variable ANIMEWIT_API_BASE to the live backend URL."
+            exit 1
+          fi
           mkdir _site
           cp -R public/. _site/
           node <<'NODE'
