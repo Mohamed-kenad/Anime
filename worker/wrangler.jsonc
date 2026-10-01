@@ -1,7 +1,8 @@
 {
   "$schema": "https://openapi.workers.dev/wrangler.json",
   "name": "animewit-relay",
-  "main": "relay.js",
+  "account_id": "19a3752e7d7497a995f0e0fedcc3d499",
+  "main": "edge.js",
   "compatibility_date": "2026-09-01",
   "workers_dev": true,
   "observability": {

@@ -5,3 +5,10 @@ node_modules
 .env.local
 .vercel
 .tmp
+
+# Home relay runtime (secrets + binary + logs)
+home-relay/.env
+home-relay/cloudflared.exe
+home-relay/*.log
+home-relay/*.log.old
+home-relay/cf.err
