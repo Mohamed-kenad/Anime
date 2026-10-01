@@ -10,6 +10,10 @@
    ========================================================================= */
 const $ = (s, r = document) => r.querySelector(s);
 const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const API_BASE = String(window.ANIMEWIT_API_BASE || '').replace(/\/+$/, '');
+const APP_BASE_PATH = String(window.ANIMEWIT_BASE_PATH || '').replace(/\/+$/, '');
+const apiUrl = (path) => API_BASE + path;
+const appUrl = (path) => APP_BASE_PATH && String(path).startsWith('/') ? APP_BASE_PATH + path : path;
 
 const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({
   '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
@@ -23,7 +27,7 @@ const imgProxy = (url) => {
   const s = String(url || '');
   if (s.startsWith('https://')) {
     try {
-      if (PROXY_HOSTS.includes(new URL(s).hostname)) return '/api/image?url=' + encodeURIComponent(s);
+      if (PROXY_HOSTS.includes(new URL(s).hostname)) return apiUrl('/api/image?url=' + encodeURIComponent(s));
     } catch { /* relative / data: urls pass through */ }
   }
   return s;
@@ -55,7 +59,7 @@ const weservUrl = (url, w, q) => {
     // witanime art: weserv can't reach that origin (404) and the image CDN
     // 403s localhost referers — serve same-origin through our proxy instead
     // (fetches direct with a witanime referer, immutable cache).
-    if (u.hostname === 'images.witanime.site') return '/api/image?url=' + encodeURIComponent(u.href);
+    if (u.hostname === 'images.witanime.site') return apiUrl('/api/image?url=' + encodeURIComponent(u.href));
     return 'https://images.weserv.nl/?url=' + encodeURIComponent(u.host + u.pathname)
       + `&w=${w}&q=${q}` + (WEBP_OK ? '&output=webp' : '');
   } catch { return String(url); }
@@ -100,7 +104,7 @@ async function api(path, { useCache = true } = {}) {
   let res = null;
   for (let attempt = 0; attempt < 2; attempt++) {
     try {
-      res = await fetch(path, { headers: { accept: 'application/json' } });
+      res = await fetch(apiUrl(path), { headers: { accept: 'application/json' } });
       if (res.ok || res.status < 500) break;
     } catch { res = null; }
     if (attempt === 0) await new Promise((r) => setTimeout(r, 1200));
@@ -254,7 +258,11 @@ function showView(targetView) {
    3. Router
    ========================================================================= */
 function parseRoute() {
-  const path = location.pathname.replace(/\/+$/, '') || '/';
+  let path = location.pathname;
+  if (APP_BASE_PATH && (path === APP_BASE_PATH || path.startsWith(APP_BASE_PATH + '/'))) {
+    path = path.slice(APP_BASE_PATH.length) || '/';
+  }
+  path = path.replace(/\/+$/, '') || '/';
   let m;
   if ((m = path.match(/^\/watch\/([^/]+)\/(\d+)$/))) {
     return { view: 'watch', slug: decodeURIComponent(m[1]), ep: Number(m[2]) };
@@ -269,8 +277,9 @@ function parseRoute() {
 }
 
 function go(url, { replace = false } = {}) {
-  if (replace) history.replaceState(null, '', url);
-  else history.pushState(null, '', url);
+  const target = appUrl(url);
+  if (replace) history.replaceState(null, '', target);
+  else history.pushState(null, '', target);
   return handleRoute();
 }
 
@@ -1117,7 +1126,7 @@ async function openWatch(slug, ep) {
     if (canonIdx >= 0 && list[canonIdx].n !== ep) {
       ep = list[canonIdx].n;
       if (state.watch) state.watch.ep = ep;
-      history.replaceState(null, '', `/watch/${encodeURIComponent(slug)}/${ep}`);
+      history.replaceState(null, '', appUrl(`/watch/${encodeURIComponent(slug)}/${ep}`));
       if ($('#watchBreadcrumbEpisode')) $('#watchBreadcrumbEpisode').textContent = `Episode ${ep}`;
       if ($('#watchEpisodeLabel')) $('#watchEpisodeLabel').textContent = `Episode ${ep}`;
     }
@@ -1576,7 +1585,7 @@ function setupGlobalEvents() {
       // If the image failed, retry once through the backend proxy, then placeholder
       if (src.startsWith('https://') && !img.dataset.proxied) {
         img.dataset.proxied = '1';
-        img.src = '/api/image?url=' + encodeURIComponent(src);
+        img.src = apiUrl('/api/image?url=' + encodeURIComponent(src));
       } else if (!img.dataset.fallback) {
         img.dataset.fallback = '1';
         img.src = POSTER_PLACEHOLDER;
@@ -1653,7 +1662,7 @@ function setupGlobalEvents() {
         if (location.pathname !== '/' || parseRoute().view !== 'home') {
           go('/#' + to).then(() => setTimeout(() => scrollToSection(to), 80));
         } else {
-          history.replaceState(null, '', '/#' + to);
+          history.replaceState(null, '', appUrl('/#' + to));
           setActiveNav(to);
           scrollToSection(to);
         }
@@ -1932,7 +1941,7 @@ function setupGlobalEvents() {
       if (location.pathname !== '/' || parseRoute().view !== 'home') {
         go('/#latest').then(() => setTimeout(() => scrollToSection('latest'), 80));
       } else {
-        history.replaceState(null, '', '/#latest');
+        history.replaceState(null, '', appUrl('/#latest'));
         scrollToSection('latest');
       }
     });

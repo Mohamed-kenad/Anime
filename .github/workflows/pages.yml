@@ -1,0 +1,53 @@
+name: Deploy GitHub Pages
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/configure-pages@v5
+      - name: Prepare site
+        env:
+          API_BASE: ${{ vars.ANIMEWIT_API_BASE || 'https://anime-wit10-up-pro.vercel.app' }}
+        run: |
+          mkdir _site
+          cp -R public/. _site/
+          node <<'NODE'
+          const fs = require('node:fs');
+          const base = '/Anime';
+          const apiBase = String(process.env.API_BASE || '').replace(/\/+$/, '');
+          let html = fs.readFileSync('_site/index.html', 'utf8');
+          html = html.replace('<head>', '<head>\n  <base href="/Anime/">');
+          html = html.replaceAll('href="/fonts.css', 'href="/Anime/fonts.css');
+          html = html.replaceAll('href="/style.css', 'href="/Anime/style.css');
+          html = html.replaceAll('src="/config.js', 'src="/Anime/config.js');
+          html = html.replaceAll('src="/app.js', 'src="/Anime/app.js');
+          html = html.replaceAll('href="/api/health"', `href="${apiBase}/api/health"`);
+          fs.writeFileSync('_site/index.html', html);
+          fs.writeFileSync('_site/404.html', html);
+          fs.writeFileSync('_site/config.js', `window.ANIMEWIT_API_BASE = ${JSON.stringify(apiBase)};\nwindow.ANIMEWIT_BASE_PATH = ${JSON.stringify(base)};\n`);
+          const fonts = fs.readFileSync('_site/fonts.css', 'utf8').replace(/url\((['"]?)\/fonts\//g, 'url($1/Anime/fonts/');
+          fs.writeFileSync('_site/fonts.css', fonts);
+          NODE
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4
