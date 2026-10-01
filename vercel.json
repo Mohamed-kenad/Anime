@@ -1,7 +1,7 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "functions": {
-    "api/*.js": {
+    "api/[...path].js": {
       "maxDuration": 60,
       "memory": 3007,
       "includeFiles": "{public/*,node_modules/@sparticuz/chromium/bin/**,node_modules/@sparticuz/chromium/build/**,node_modules/puppeteer-extra-plugin-stealth/**}"

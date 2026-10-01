@@ -110,7 +110,13 @@ async function api(path, { useCache = true } = {}) {
   if (!res.ok) {
     const raw = (data && data.error) || data;
     const msg = (raw && typeof raw === 'object' ? (raw.message || raw.error || JSON.stringify(raw)) : raw) || `Request failed (${res.status})`;
-    throw new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    const err = new Error(typeof msg === 'string' ? msg : JSON.stringify(msg));
+    /* Deploy-config signal (challenged network, no relay): let the watch
+       view show the owner hint instead of a generic retry loop. */
+    if (data && data.needsRelay) err.needsRelay = true;
+    if (data && data.hint) err.hint = data.hint;
+    err.status = res.status;
+    throw err;
   }
   if (useCache) {
     apiCache.set(path, data);
@@ -1073,20 +1079,28 @@ async function openWatch(slug, ep) {
 
   const serversP = api(`/api/servers/${encodeURIComponent(slug)}/${ep}`);
 
-  let serversData;
+  /* Detail and servers fail independently: a challenged streaming session
+     (503 needsRelay) must not blank the episode list — render episodes from
+     detail first, then report the server error in the player pane. */
+  state.anime = await detailP;
+  let serversData = null;
   try {
-    [state.anime, serversData] = await Promise.all([detailP, serversP]);
+    serversData = await serversP;
   } catch (err) {
-    if ($('#playerStateHeading')) $('#playerStateHeading').textContent = 'Failed to load servers';
-    if ($('#playerStateText')) $('#playerStateText').textContent = err.message || 'Stream servers temporarily unavailable.';
+    if (err && err.needsRelay) {
+      if ($('#playerStateHeading')) $('#playerStateHeading').textContent = 'Streaming relay not configured';
+      if ($('#playerStateText')) $('#playerStateText').textContent = 'The owner needs to set UPSTREAM_RELAY (see /api/health) — episode list still works below.';
+      toast('Streaming relay not configured — episode list still available', 'error');
+    } else {
+      if ($('#playerStateHeading')) $('#playerStateHeading').textContent = 'Failed to load servers';
+      if ($('#playerStateText')) $('#playerStateText').textContent = (err && err.message) || 'Stream servers temporarily unavailable.';
+      toast((err && err.message) || 'Failed to load servers', 'error');
+    }
     if ($('#playerRetryBtn')) {
       $('#playerRetryBtn').hidden = false;
       $('#playerRetryBtn').onclick = () => openWatch(slug, ep);
     }
-    toast(err.message, 'error');
-    return;
   }
-
   if (state.anime) {
     state.anime.slug = slug;
     if ($('#watchAnimeTitle')) $('#watchAnimeTitle').textContent = state.anime.title;
@@ -1145,11 +1159,16 @@ async function openWatch(slug, ep) {
     };
   }
 
-  // Sidebar episode navigation
+  // Sidebar episode navigation (renders even when servers failed, so the
+  // page never sticks on "Loading episodes…")
   const sidebarList = $('#episodeList');
   if (sidebarList) {
     renderEpisodeExplorer(sidebarList, eps, ep, $('#sidebarRangeTabs'), null);
   }
+
+  // Servers failed earlier → the player pane already shows the error; stop
+  // here with the episode list usable.
+  if (!serversData) return;
 
   // Server management
   state.watch.servers = serversData.servers || [];

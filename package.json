@@ -5,10 +5,11 @@
   "description": "AnimeWit - anime catalog + in-site player backed by witanime.site",
   "scripts": {
     "start": "node server.js",
-    "dev": "node server.js"
+    "dev": "node server.js",
+    "deploy:relay": "npx wrangler@latest deploy --config worker/wrangler.jsonc"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": "22.x"
   },
   "dependencies": {
     "@sparticuz/chromium": "^153.0.0",
