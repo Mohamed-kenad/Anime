@@ -1211,21 +1211,36 @@ function destroyHls() {
   }
 }
 
-function setupVideoPlayer(streamUrl, type, referrer) {
+/* Only the URL's *path* decides whether something is a stream. A substring
+   test on the whole URL is wrong: the host "www.mp4upload.com" contains
+   ".mp4", so the player's own videojs.min.css used to pass as an mp4 and
+   <video> requested it with Range: bytes=0- (206, no video). */
+function mediaPathIs(u, ext) {
+  try {
+    return new RegExp('\\.' + ext + '$', 'i').test(new URL(u, location.href).pathname.replace(/\/+$/, ''));
+  } catch { return false; }
+}
+
+function setupVideoPlayer(streamUrl, type, referrer, onFatal) {
   const video = $('#videoPlayer');
   const frame = $('#playerFrame');
   const stateEl = $('#playerState');
   const pipBtn = $('#pipBtn');
   if (!video) return false;
 
+  const isHls = mediaPathIs(streamUrl, 'm3u8');
+  const isMp4 = !isHls && mediaPathIs(streamUrl, 'mp4');
+  if (!isHls && !isMp4) return false;
+
   destroyHls();
 
   // Hide iframe, show video
   if (frame) frame.hidden = true;
+  fitEmbedFrame();
   video.hidden = false;
   if (pipBtn && 'pictureInPictureEnabled' in document) pipBtn.hidden = false;
 
-  if (type === 'hls' || streamUrl.includes('.m3u8')) {
+  if (isHls) {
     if (typeof Hls !== 'undefined' && Hls.isSupported()) {
       hlsInstance = new Hls({
         enableWorker: true,
@@ -1245,7 +1260,10 @@ function setupVideoPlayer(streamUrl, type, referrer) {
           if (stateEl) stateEl.hidden = false;
           if ($('#playerStateHeading')) $('#playerStateHeading').textContent = 'Stream Error';
           if ($('#playerStateText')) $('#playerStateText').textContent = 'HLS stream failed. Trying fallback…';
-          fallbackToIframe(streamUrl, referrer);
+          /* An iframe pointed at the playlist is not a player — hand it back to
+             the provider embed, which knows how to serve this episode. */
+          if (onFatal) onFatal();
+          else fallbackToIframe(streamUrl, referrer);
         }
       });
       return true;
@@ -1255,12 +1273,93 @@ function setupVideoPlayer(streamUrl, type, referrer) {
       video.addEventListener('loadedmetadata', () => video.play().catch(() => {}), { once: true });
       return true;
     }
-  } else if (type === 'mp4' || streamUrl.includes('.mp4')) {
+  } else if (isMp4) {
     video.src = streamUrl;
     video.play().catch(() => {});
     return true;
   }
   return false;
+}
+
+/* The fallback embed (MEGA et al.) is a cross-origin frame, so neither our
+   stylesheet nor this script can touch its controls. The only thing we own is
+   the frame box, and the embed picks its layout from the UA alone (MEGA's
+   secureboot.js `is_mobile`):
+     - phone UA  -> compact controls whose bar is ~500px wide, which only fits
+                    while the frame is <=420px (their own
+                    `@media (max-width: 420px) { .bar { scale(.8) } }`), or at
+                    >=540px; between those it slides out of the frame;
+     - desktop UA-> a ~600px control bar plus a 130px play button, which
+                    overflow a 400px frame on both sides (bar cut off at the
+                    left, play button oversized).
+   So whenever the frame is too narrow for the embed's own layout, lay it out
+   at a width that fits and scale it down to the box - the embed keeps its
+   proportions instead of overflowing. */
+const EMBED_LAYOUT_W = 640;
+const EMBED_PHONE_LAYOUT_W = 540;
+const EMBED_PHONE_UA = /iphone|ipad|android|blackberry|nokia|opera mini|ucbrowser|windows mobile|windows phone|iemobile|mobile safari|bb10; touch/i;
+
+function clearEmbedFit(frame) {
+  frame.style.left = '';
+  frame.style.top = '';
+  frame.style.right = '';
+  frame.style.bottom = '';
+  frame.style.width = '';
+  frame.style.height = '';
+  frame.style.maxWidth = '';
+  frame.style.transform = '';
+  frame.style.transformOrigin = '';
+}
+
+function fitEmbedFrame() {
+  const wrap = $('#watchPlayer');
+  const frame = $('#playerFrame');
+  if (!wrap || !frame) return;
+
+  // Fullscreen hands sizing to the #playerFrame:fullscreen rules; inline
+  // width/transform would win over them and letterbox the fullscreen player.
+  const fsEl = document.fullscreenElement || document.webkitFullscreenElement;
+  const cw = wrap.clientWidth;
+  const ch = wrap.clientHeight;
+  if (frame.hidden || fsEl || !cw || !ch) {
+    clearEmbedFit(frame);
+    return;
+  }
+
+  const isPhone = EMBED_PHONE_UA.test(navigator.userAgent);
+  // Phone frames already at the embed's own compact breakpoint stay 1:1 so it
+  // renders crisp; anything narrower than its bar, and any desktop frame,
+  // gets laid out wider and scaled down to the box.
+  const layoutW = isPhone
+    ? (cw <= 420 ? cw : Math.max(cw, EMBED_PHONE_LAYOUT_W))
+    : Math.max(cw, EMBED_LAYOUT_W);
+
+  if (layoutW <= cw) {
+    clearEmbedFit(frame);
+    return;
+  }
+
+  // #playerFrame carries `max-width: 100%` as a safety net for the unscaled
+  // case - without lifting it here the layout width is clamped back to the box
+  // and scale() then shrinks the already-fitted frame, leaving the right of the
+  // box empty (the embed's controls pile up on the left).
+  frame.style.left = '0px';
+  frame.style.top = '0px';
+  frame.style.right = 'auto';
+  frame.style.bottom = 'auto';
+  frame.style.maxWidth = 'none';
+  frame.style.width = `${layoutW}px`;
+  frame.style.height = `${Math.round((ch * layoutW) / cw)}px`;
+  frame.style.transform = `scale(${cw / layoutW})`;
+  frame.style.transformOrigin = 'top left';
+}
+
+window.addEventListener('resize', fitEmbedFrame);
+document.addEventListener('fullscreenchange', fitEmbedFrame);
+document.addEventListener('webkitfullscreenchange', fitEmbedFrame);
+if (typeof ResizeObserver !== 'undefined') {
+  const watchBox = $('#watchPlayer');
+  if (watchBox) new ResizeObserver(fitEmbedFrame).observe(watchBox);
 }
 
 function fallbackToIframe(embedUrl, referrer) {
@@ -1272,6 +1371,7 @@ function fallbackToIframe(embedUrl, referrer) {
   if (frame) {
     frame.src = embedUrl;
     frame.hidden = false;
+    fitEmbedFrame();
   }
   destroyHls();
 }
@@ -1371,17 +1471,30 @@ async function loadStreamEmbed(token, serverMeta, { fresh = false } = {}) {
   state.watch.activeToken = token;
   $$('.server-chip').forEach((c) => c.classList.toggle('active', c.dataset.token === token));
 
-  const frame = resetPlayerFrame();
+  resetPlayerFrame();
 
   try {
     // Try to extract direct stream URL (ad-free)
     const res = await api(`/api/stream/${encodeURIComponent(slug)}/${ep}?token=${encodeURIComponent(token)}${fresh ? '&fresh=1' : ''}`, { useCache: false });
-    if (res.streamUrl && setupVideoPlayer(res.streamUrl, res.type, res.referrer)) {
-      state.watch.embedUrl = res.streamUrl;
+    /* 'direct' → play the host's URL; 'proxy' → hotlink-walled host, so play
+       our same-origin /api/media pipe; anything else → provider player. */
+    const url = res.via === 'direct' ? res.streamUrl : res.via === 'proxy' ? res.proxyUrl : null;
+    if (url && setupVideoPlayer(url, res.type, res.referrer, () => loadEmbedFallback(token, serverMeta, fresh))) {
+      state.watch.embedUrl = url;
       if ($('#openInTabBtn')) $('#openInTabBtn').hidden = false;
       if (stateEl) stateEl.hidden = true;
+      const video = $('#videoPlayer');
+      if (video) {
+        video.onerror = () => {
+          /* Only while this stream is still the active one: the element keeps
+             playing (or erroring) across server switches otherwise. */
+          if (video.hidden || !state.watch || state.watch.activeToken !== token) return;
+          video.onerror = null;
+          loadEmbedFallback(token, serverMeta, fresh);
+        };
+      }
       if ($('#watchEpisodeHint')) {
-        $('#watchEpisodeHint').textContent = `Direct stream via ${serverMeta.host} (${serverMeta.quality} · ${serverMeta.version}) — no ads.`;
+        $('#watchEpisodeHint').textContent = `${res.via === 'proxy' ? 'Direct stream (relayed)' : 'Direct stream'} via ${serverMeta.host} (${serverMeta.quality} · ${serverMeta.version}) — no ads.`;
       }
       return;
     }
@@ -1389,22 +1502,33 @@ async function loadStreamEmbed(token, serverMeta, { fresh = false } = {}) {
     console.warn('Direct stream extraction failed, falling back to embed:', streamErr);
   }
 
-  // Fallback to iframe embed
+  return loadEmbedFallback(token, serverMeta, fresh);
+}
+
+/* Provider player for when there is no playable direct stream (or it died
+   mid-play). Reuses the iframe reset by loadStreamEmbed. */
+async function loadEmbedFallback(token, serverMeta, fresh = false) {
+  if (!state.watch) return;
+  const { slug, ep } = state.watch;
+  const stateEl = $('#playerState');
+  const frame = $('#playerFrame');
+  destroyHls();
+
   try {
     if ($('#playerStateText')) $('#playerStateText').textContent = 'Loading embed player…';
     const res = await api(`/api/embed/${encodeURIComponent(slug)}/${ep}?token=${encodeURIComponent(token)}${fresh ? '&fresh=1' : ''}`, { useCache: false });
     if (!isSafeEmbed(res.url)) throw new Error('Unsafe stream target blocked by security guard.');
 
     const sb = isBlockPopups() ? strictSandbox(res.sandbox) : res.sandbox;
-    frame.setAttribute('sandbox', sb || 'allow-scripts allow-same-origin allow-presentation allow-forms allow-orientation-lock allow-downloads allow-storage-access-by-user-activation');
-    watchPlayerFrame(frame);
+    if (frame) frame.setAttribute('sandbox', sb || 'allow-scripts allow-same-origin allow-presentation allow-forms allow-orientation-lock allow-downloads allow-storage-access-by-user-activation');
+    if (frame) watchPlayerFrame(frame);
     state.watch.embedUrl = res.url;
     if ($('#openInTabBtn')) $('#openInTabBtn').hidden = false;
-    frame.src = res.url;
-    frame.hidden = false;
+    if (frame) { frame.src = res.url; frame.hidden = false; }
+    fitEmbedFrame();
     const video = $('#videoPlayer');
+    if (video) { video.onerror = null; video.hidden = true; }
     const pipBtn = $('#pipBtn');
-    if (video) video.hidden = true;
     if (pipBtn) pipBtn.hidden = true;
     if (stateEl) stateEl.hidden = true;
 

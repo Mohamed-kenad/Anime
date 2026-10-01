@@ -2846,9 +2846,17 @@ input, button, select {
     min-width: 0;
   }
 
-  /* Softer corners + tighter glow for a full-bleed phone video */
-  .watch-player,
-  .player-glow-wrap { border-radius: 12px; }
+  /* Full-bleed phone video: the embed (MEGA) draws its own control bar inside
+     #playerFrame, so the iframe's width is all we control. Breaking out of the
+     section's 16px padding hands it ~10% more width to fit play / volume /
+     timing / speed / repeat / settings / fullscreen in one row. */
+  .player-glow-wrap { margin-inline: -16px; }
+  .watch-player {
+    border-radius: 0;
+    border-left: 0;
+    border-right: 0;
+    box-shadow: none;
+  }
   .player-ambient-glow { display: none; }
   /* Both players letterbox (object-fit: contain) and MEGA sizes its <video>
      with 100vw/100vh, so a 16:9 box is what keeps the frame full — a 4:3 or
