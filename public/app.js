@@ -1505,8 +1505,9 @@ async function loadStreamEmbed(token, serverMeta, { fresh = false } = {}) {
     // Try to extract direct stream URL (ad-free)
     const res = await api(`/api/stream/${encodeURIComponent(slug)}/${ep}?token=${encodeURIComponent(token)}${fresh ? '&fresh=1' : ''}`, { useCache: false });
     /* 'direct' → play the host's URL; 'proxy' → hotlink-walled host, so play
-       our same-origin /api/media pipe; anything else → provider player. */
-    const url = res.via === 'direct' ? res.streamUrl : res.via === 'proxy' ? res.proxyUrl : null;
+       our /api/media pipe (absolute: the API is a separate origin from the
+       GitHub Pages frontend); anything else → provider player. */
+    const url = res.via === 'direct' ? res.streamUrl : res.via === 'proxy' ? apiUrl(res.proxyUrl) : null;
     if (url && setupVideoPlayer(url, res.type, res.referrer, () => loadEmbedFallback(token, serverMeta, fresh))) {
       state.watch.embedUrl = url;
       if ($('#openInTabBtn')) $('#openInTabBtn').hidden = false;

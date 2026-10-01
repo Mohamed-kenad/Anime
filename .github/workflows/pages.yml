@@ -28,8 +28,8 @@ jobs:
           API_BASE: ${{ vars.ANIMEWIT_API_BASE }}
         run: |
           if [ -z "$API_BASE" ]; then
-            echo "Set the repository Actions variable ANIMEWIT_API_BASE to the live backend URL."
-            exit 1
+            API_BASE='https://anime-wit10-up-pro.vercel.app'
+            echo "ANIMEWIT_API_BASE is not set — falling back to $API_BASE"
           fi
           mkdir _site
           cp -R public/. _site/
@@ -49,6 +49,8 @@ jobs:
           fs.writeFileSync('_site/config.js', `window.ANIMEWIT_API_BASE = ${JSON.stringify(apiBase)};\nwindow.ANIMEWIT_BASE_PATH = ${JSON.stringify(base)};\n`);
           const fonts = fs.readFileSync('_site/fonts.css', 'utf8').replace(/url\((['"]?)\/fonts\//g, 'url($1/Anime/fonts/');
           fs.writeFileSync('_site/fonts.css', fonts);
+          const llms = fs.readFileSync('_site/llms.txt', 'utf8').replace(/\]\(\/api\//g, `](${apiBase}/api/`);
+          fs.writeFileSync('_site/llms.txt', llms);
           NODE
       - uses: actions/upload-pages-artifact@v4
         with:

@@ -1,0 +1,87 @@
+name: Deploy API (Vercel)
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'server.js'
+      - 'lib/**'
+      - 'api/**'
+      - 'vercel.json'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/deploy-api.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-api
+  cancel-in-progress: false
+
+env:
+  VERCEL_PROJECT: anime-wit10-up-pro
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Verify VERCEL_TOKEN
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          if [ -z "$VERCEL_TOKEN" ]; then
+            echo "::error::Repository secret VERCEL_TOKEN is missing. Create a token at https://vercel.com/account/tokens then add it under Settings -> Secrets and variables -> Actions."
+            exit 1
+          fi
+
+      - name: Create and link Vercel project
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: |
+          # project add fails harmlessly when the project already exists
+          npx --yes vercel@latest project add "$VERCEL_PROJECT" --token "$VERCEL_TOKEN" || true
+          npx --yes vercel@latest link --yes --project "$VERCEL_PROJECT" --token "$VERCEL_TOKEN"
+
+      - name: Sync environment variables
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          UPSTREAM_RELAY: ${{ secrets.UPSTREAM_RELAY }}
+          UPSTREAM_RELAY_TOKEN: ${{ secrets.UPSTREAM_RELAY_TOKEN }}
+          UPSTREAM_JINA_KEY: ${{ secrets.UPSTREAM_JINA_KEY }}
+        run: |
+          for name in UPSTREAM_RELAY UPSTREAM_RELAY_TOKEN UPSTREAM_JINA_KEY; do
+            value="${!name:-}"
+            if [ -n "$value" ]; then
+              npx --yes vercel@latest env add "$name" production --value "$value" --force --yes --token "$VERCEL_TOKEN"
+            else
+              echo "Secret $name not set — skipping."
+            fi
+          done
+
+      - name: Deploy to production
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        run: npx --yes vercel@latest deploy --prod --yes --token "$VERCEL_TOKEN"
+
+      - name: Verify deployment health
+        run: |
+          url="https://$VERCEL_PROJECT.vercel.app/api/health"
+          for i in $(seq 1 30); do
+            if curl -fsS --max-time 10 "$url" | grep -q '"ok":true'; then
+              echo "Healthy: $url"
+              exit 0
+            fi
+            echo "Waiting for $url ($i/30)..."
+            sleep 5
+          done
+          echo "::error::$url never became healthy. Check https://vercel.com — the subdomain $VERCEL_PROJECT may already be taken by another account; if so, use the project's real URL as the ANIMEWIT_API_BASE repository variable."
+          exit 1
